@@ -11,6 +11,9 @@
 #include "EnhancedInputComponent.h"
 #include "InputAction.h"
 #include "InputActionValue.h"
+#include "Engine/World.h"
+
+
 
 // Sets default values
 ARGBPlayerCharacter::ARGBPlayerCharacter()
@@ -38,12 +41,17 @@ ARGBPlayerCharacter::ARGBPlayerCharacter()
 	Movement->bUseControllerDesiredRotation = false;
 
 	Movement->MaxWalkSpeed = 650.0f;
-	Movement->MaxAcceleration = 2048.0f;
-	Movement->BrakingDecelerationWalking = 2048.0f;
+	Movement->MaxAcceleration = 10000.0f;
+	Movement->BrakingDecelerationWalking = 10000.0f;
 
-	Movement->JumpZVelocity = 650.0f;
+	Movement->JumpZVelocity = 1000.0f;
 	Movement->GravityScale = 1.8f;
-	Movement->AirControl = 0.35f;
+	Movement->AirControl = 0.55f;
+
+	JumpMaxHoldTime = 0.2f;
+	JumpMaxCount = 1;
+
+	Movement->bApplyGravityWhileJumping = true;
 
 	SideViewCameraArm = CreateDefaultSubobject<URGBSideViewCameraComponent>(TEXT("SideViewCameraArm"));
 	SideViewCameraArm->SetupAttachment(GetRootComponent());
@@ -71,12 +79,36 @@ void ARGBPlayerCharacter::Move(const FInputActionValue& Value)
 
 void ARGBPlayerCharacter::StartJump()
 {
-	Jump();
+	bJumpInputHeld = true;
+
+	BufferedJumpExpiresAt = GetWorld()->GetTimeSeconds() + JumpBufferDuration;
 }
 
 void ARGBPlayerCharacter::EndJump()
 {
+	bJumpInputHeld = false;
 	StopJumping();
+}
+
+void ARGBPlayerCharacter::CheckJumpInput(float DeltaTime)
+{
+	if (BufferedJumpExpiresAt >= 0.0) {
+		const double CurrentTime = GetWorld()->GetTimeSeconds();
+
+		if (CurrentTime > BufferedJumpExpiresAt) {
+			BufferedJumpExpiresAt = -1.0f;
+		}
+		else if (GetCharacterMovement()->IsMovingOnGround() && CanJump()) {
+			BufferedJumpExpiresAt = -1.0f;
+			Jump();
+		}
+	}
+
+	Super::CheckJumpInput(DeltaTime);
+
+	if (!bJumpInputHeld) {
+		StopJumping();
+	}
 }
 
 // Called every frame
@@ -97,11 +129,11 @@ void ARGBPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 		return;
 	}
 
-	if (!ensureMsgf(MoveAction, TEXT("MoveAction is not assigned"))) {
+	if (ensureMsgf(MoveAction, TEXT("MoveAction is not assigned"))) {
 		EnhancedInput->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ARGBPlayerCharacter::Move);
 	}
 
-	if (!ensureMsgf(JumpAction, TEXT("JumpAction is not assigned"))) {
+	if (ensureMsgf(JumpAction, TEXT("JumpAction is not assigned"))) {
 		EnhancedInput->BindAction(JumpAction, ETriggerEvent::Started, this, &ARGBPlayerCharacter::StartJump);
 		EnhancedInput->BindAction(JumpAction, ETriggerEvent::Completed, this, &ARGBPlayerCharacter::EndJump);
 		EnhancedInput->BindAction(JumpAction, ETriggerEvent::Canceled, this, &ARGBPlayerCharacter::EndJump);

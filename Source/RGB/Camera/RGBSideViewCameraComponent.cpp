@@ -6,15 +6,15 @@
 URGBSideViewCameraComponent::URGBSideViewCameraComponent()
 {
 	SetUsingAbsoluteRotation(true);
-	SetRelativeRotation(FRotator(0.0f, -90.0f, 0.0f));
+	SetRelativeRotation(FRotator(-10.0f, -90.0f, 0.0f));
 
 	bUsePawnControlRotation = false;
 	bInheritPitch = false;
 	bInheritRoll = false;
 	bInheritYaw = false;
 
-	TargetArmLength = 1200.0f;
-	TargetOffset = FVector(0.0f, 0.0f, 80.0f);
+	TargetArmLength = 2000.0f;
+	TargetOffset = FVector(0.0f, 0.0f, 120.0f);
 
 	bDoCollisionTest = false;
 

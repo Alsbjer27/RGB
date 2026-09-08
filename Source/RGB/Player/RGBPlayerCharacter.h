@@ -41,6 +41,16 @@ protected:
 	void StartJump();
 	void EndJump();
 
+	/* START: Jump Buffering */
+	virtual void CheckJumpInput(float DeltaTime) override;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Movement", meta = (ClampMin = "0.0", Units = "s"))
+	float JumpBufferDuration = 0.15f;
+
+	double BufferedJumpExpiresAt = -1.0f;
+	bool bJumpInputHeld = false;
+	/* END: Jump Buffering*/
+
 
 public:	
 	// Called every frame
