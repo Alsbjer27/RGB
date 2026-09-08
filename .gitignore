@@ -1,0 +1,32 @@
+# Unreal generated directories
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+.vs/
+
+# IDE and generated project files
+*.sln
+*.suo
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+*.code-workspace
+.idea/
+
+# Build products and local caches in plugins
+Plugins/**/Binaries/
+Plugins/**/Intermediate/
+Plugins/**/DerivedDataCache/
+Plugins/**/Saved/
+
+# OS and editor clutter
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.tmp
+*.log
+
+# Local Unreal user settings
+Config/DefaultEditorPerProjectUserSettings.ini
