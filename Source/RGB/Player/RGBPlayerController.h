@@ -6,11 +6,13 @@
 #include "GameFramework/PlayerController.h"
 #include "RGBPlayerController.generated.h"
 
+
 /**
  * 
  */
 
 class UInputMappingContext;
+class UInputAction;
 
 UCLASS()
 class RGB_API ARGBPlayerController : public APlayerController
@@ -24,5 +26,11 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Input")
 	TObjectPtr<UInputMappingContext> DefaultMappingContext;
-	
+
+	virtual void SetupInputComponent() override;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Input")
+	TObjectPtr<UInputAction> RestartAction;
+
+	void RestartPlayer();
 };

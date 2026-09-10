@@ -7,6 +7,11 @@
 #include "EnhancedInputSubsystems.h"
 #include "InputMappingContext.h"
 
+#include "EnhancedInputComponent.h"
+#include "InputAction.h"
+#include "Engine/World.h"
+#include "../Game/RGBGameMode.h"
+
 void ARGBPlayerController::BeginPlay()
 {
 	Super::BeginPlay();
@@ -49,4 +54,28 @@ void ARGBPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		}
 	}
 	Super::EndPlay(EndPlayReason);
+}
+
+void ARGBPlayerController::SetupInputComponent()
+{
+	Super::SetupInputComponent();
+
+	UEnhancedInputComponent* EnhancedInput = Cast<UEnhancedInputComponent>(InputComponent);
+
+	if (!ensureMsgf(EnhancedInput, TEXT("RGBPlayerController requires Enhanced Input"))) {
+		return;
+	}
+
+	if (ensureMsgf(RestartAction, TEXT("RestartAction is not assigned.")))
+	{
+		EnhancedInput->BindAction(RestartAction, ETriggerEvent::Started, this, &ARGBPlayerController::RestartPlayer);
+	}
+}
+
+void ARGBPlayerController::RestartPlayer() {
+	ARGBGameMode* GameMode = GetWorld()->GetAuthGameMode<ARGBGameMode>();
+
+	if (ensureMsgf(GameMode, TEXT("Restart requires RGBGameMode"))) {
+		GameMode->RespawnPlayer(this);
+	}
 }

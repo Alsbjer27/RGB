@@ -13,7 +13,7 @@ URGBSideViewCameraComponent::URGBSideViewCameraComponent()
 	bInheritRoll = false;
 	bInheritYaw = false;
 
-	TargetArmLength = 2000.0f;
+	TargetArmLength = 20000.0f;
 	TargetOffset = FVector(0.0f, 0.0f, 120.0f);
 
 	bDoCollisionTest = false;

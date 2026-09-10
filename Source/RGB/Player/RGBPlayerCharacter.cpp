@@ -12,11 +12,15 @@
 #include "InputAction.h"
 #include "InputActionValue.h"
 #include "Engine/World.h"
+#include "RGBCharacterMovementComponent.h"
+
+#include "../Game/RGBGameMode.h"
 
 
 
 // Sets default values
-ARGBPlayerCharacter::ARGBPlayerCharacter()
+ARGBPlayerCharacter::ARGBPlayerCharacter(const FObjectInitializer& ObjectInitializer) 
+	: Super(ObjectInitializer.SetDefaultSubobjectClass<URGBCharacterMovementComponent>(ACharacter::CharacterMovementComponentName))
 {
  	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = false;
@@ -40,11 +44,11 @@ ARGBPlayerCharacter::ARGBPlayerCharacter()
 	Movement->bOrientRotationToMovement = false;
 	Movement->bUseControllerDesiredRotation = false;
 
-	Movement->MaxWalkSpeed = 650.0f;
+	Movement->MaxWalkSpeed = 1000.0f;
 	Movement->MaxAcceleration = 10000.0f;
 	Movement->BrakingDecelerationWalking = 10000.0f;
 
-	Movement->JumpZVelocity = 1000.0f;
+	Movement->JumpZVelocity = 1500.0f;
 	Movement->GravityScale = 1.8f;
 	Movement->AirControl = 0.55f;
 
@@ -64,6 +68,19 @@ ARGBPlayerCharacter::ARGBPlayerCharacter()
 	SideViewCamera->bUsePawnControlRotation = false;
 }
 
+void ARGBPlayerCharacter::FellOutOfWorld(const UDamageType& DamageType)
+{
+	ARGBGameMode* GameMode = GetWorld()->GetAuthGameMode<ARGBGameMode>();
+
+	if (GameMode && Controller) {
+		if (GameMode->RespawnPlayer(Controller)) {
+			return;
+		}
+	}
+
+	Super::FellOutOfWorld(DamageType);
+}
+
 // Called when the game starts or when spawned
 void ARGBPlayerCharacter::BeginPlay()
 {
@@ -74,6 +91,11 @@ void ARGBPlayerCharacter::BeginPlay()
 void ARGBPlayerCharacter::Move(const FInputActionValue& Value)
 {
 	const float MoveAmount = FMath::Clamp(Value.Get<float>(), -1.0f, 1.0f);
+
+	if (!FMath::IsNearlyZero(MoveAmount)) {
+		LastFacingDirection = MoveAmount > 0.0f ? 1.0 : -1.0f;
+	}
+
 	AddMovementInput(FVector::ForwardVector, MoveAmount);
 }
 
@@ -88,6 +110,25 @@ void ARGBPlayerCharacter::EndJump()
 {
 	bJumpInputHeld = false;
 	StopJumping();
+}
+
+void ARGBPlayerCharacter::StartDash()
+{
+	UEnhancedInputComponent* EnhancedInput = Cast<UEnhancedInputComponent>(InputComponent);
+
+	URGBCharacterMovementComponent* RGBMovement = Cast<URGBCharacterMovementComponent>(GetCharacterMovement());
+
+	if (!EnhancedInput || !RGBMovement || !MoveAction) {
+		return;
+	}
+
+	const float MoveAmount = EnhancedInput->GetBoundActionValue(MoveAction).Get<float>();
+	const float DashDirection = FMath::IsNearlyZero(MoveAmount) ? LastFacingDirection : (MoveAmount > 0.0f ? 1.0f : -1.0);
+
+	if (RGBMovement->TryStartAirDash(DashDirection)) {
+		LastFacingDirection = DashDirection;
+		BufferedJumpExpiresAt = -1.0f;
+	}
 }
 
 void ARGBPlayerCharacter::CheckJumpInput(float DeltaTime)
@@ -129,7 +170,9 @@ void ARGBPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 		return;
 	}
 
-	if (ensureMsgf(MoveAction, TEXT("MoveAction is not assigned"))) {
+	if (ensureMsgf(MoveAction, TEXT("MoveAction is not assigned")))
+	{
+		EnhancedInput->BindActionValue(MoveAction);
 		EnhancedInput->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ARGBPlayerCharacter::Move);
 	}
 
@@ -139,5 +182,8 @@ void ARGBPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 		EnhancedInput->BindAction(JumpAction, ETriggerEvent::Canceled, this, &ARGBPlayerCharacter::EndJump);
 	}
 
+	if (ensureMsgf(DashAction, TEXT("DashAction is not assigned"))) {
+		EnhancedInput->BindAction(DashAction, ETriggerEvent::Started, this, &ARGBPlayerCharacter::StartDash);
+	}
 }
 

@@ -16,4 +16,6 @@ class RGB_API ARGBGameMode : public AGameModeBase
 	
 public:
 	ARGBGameMode();
+
+	bool RespawnPlayer(AController* PlayerController);
 };

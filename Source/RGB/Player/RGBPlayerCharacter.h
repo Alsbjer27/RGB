@@ -12,6 +12,8 @@ class URGBSideViewCameraComponent;
 class UInputAction;
 struct FInputActionValue;
 
+class UDamageType;
+
 UCLASS()
 class RGB_API ARGBPlayerCharacter : public ACharacter
 {
@@ -19,7 +21,10 @@ class RGB_API ARGBPlayerCharacter : public ACharacter
 
 public:
 	// Sets default values for this character's properties
-	ARGBPlayerCharacter();
+	ARGBPlayerCharacter(const FObjectInitializer& ObjectInitializer);
+
+	virtual void FellOutOfWorld(const UDamageType& DamageType) override;
+
 
 protected:
 	// Called when the game starts or when spawned
@@ -37,9 +42,15 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Input")
 	TObjectPtr<UInputAction> JumpAction;
 
+	UPROPERTY(EditDefaultsonly, BlueprintReadOnly, Category = "RGB|Input")
+	TObjectPtr<UInputAction> DashAction;
+
 	void Move(const FInputActionValue& Value);
 	void StartJump();
 	void EndJump();
+	
+	void StartDash();
+	float LastFacingDirection = 1.0f;
 
 	/* START: Jump Buffering */
 	virtual void CheckJumpInput(float DeltaTime) override;
