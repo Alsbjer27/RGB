@@ -1,0 +1,245 @@
+RGB - CROSS-PC CODEX HANDOFF
+Last updated: 2026-09-11 (Europe/Stockholm)
+
+PURPOSE
+Read this file when continuing RGB in a new Codex conversation or on another PC.
+It carries project context, user preferences, decisions and the next steps.
+Git and Git LFS carry the actual source and assets; this file is not a backup
+of the project. Reconcile this snapshot with the current checkout before work.
+Current explicit user instructions take precedence over an older handoff.
+
+MOST IMPORTANT: HOW TO WORK WITH THE USER
+- The user is learning Unreal/C++ and wants to edit gameplay files personally.
+- Do NOT write or modify gameplay code, configuration or assets on their behalf.
+  Provide exact code and editor instructions for the user to enter themselves.
+- State the destination file/class clearly. Say whether a snippet is an addition,
+  replacement function, or replacement of a complete file. Avoid duplicate members.
+- Explain the purpose of each change in small, buildable steps. Wait for the
+  user's build/playtest result before proceeding with dependent implementation.
+- Create new Unreal classes through Tools > New C++ Class in Unreal Editor.
+  The user edits their generated C++ files in Visual Studio.
+- Read-only repository/source/log inspection is welcome for diagnosis.
+- This handoff file is an explicit exception: the user requested Codex create
+  it and refresh it before future Git handoffs/commits/pushes. Do not infer
+  permission to edit other files from permission to maintain this one.
+- Commit/push only when requested. The user previously authorized a particular
+  push; that is not blanket permission to publish every future change.
+- Do not implement all milestones at once. Preserve user tuning choices.
+
+PROJECT AND GIT SNAPSHOT
+- Unreal Engine 5.7, C++ project, one runtime module named RGB.
+- Original PC path: C:\Users\manun\Desktop\Spelprojekt\RGB
+  Use the actual checkout path on the other PC; do not hard-code this path.
+- Repository: https://github.com/Alsbjer27/RGB.git
+- Branch observed: main.
+- Inspected base commit: 72257597d9a79ed0651cae437123d0789c7dee2b
+  Commit title: A lot of stuff
+- Working tree was clean before creating this handoff. Local origin/main matched
+  main at inspection, but no fresh network fetch was performed in this pass.
+- The base commit above predates this file's creation; it is deliberately not
+  the hash of the future commit containing this file.
+- Unreal .uasset/.umap files and large art/audio formats use Git LFS.
+- Generated Binaries, Intermediate, Saved, DerivedDataCache, .vs and .sln files
+  are ignored. Do not move those between PCs as a substitute for rebuilding.
+
+GAME PREMISE AND DEVELOPMENT RULES
+2.5D action-puzzle platformer. Players change platform colors by landing on or
+jumping off platforms. Color-specific weapons eliminate matching enemies.
+Eliminated enemies transfer their color to the platform beneath them. Arenas
+are solved by reaching a required platform-color configuration.
+
+C++ owns gameplay rules, movement, camera behavior, weapons, platform state,
+arena evaluation, enemy AI and reusable systems. Blueprints supply asset
+references, exposed tuning, visual configuration and level composition only.
+No core gameplay logic in Blueprint or Level Blueprint graphs.
+
+Read AGENTS.md, PROJECT_PLAN.md, ARCHITECTURE.md and DECISIONS.md too.
+The user approved the initial documentation and authorized implementation.
+Their old 'awaiting initial review/no gameplay implemented' wording is stale;
+do not repeat that approval gate. Those documents have not yet been fully
+updated to reflect movement, dash, and respawn work. This file records the
+newer session context, but current source and tests establish actual behavior.
+
+MILESTONE ORDER
+1. Player movement AND correct 2.5D camera.
+2. Mechanics test level.
+3. Platform color system.
+4. Basic combat and enemy color transfer.
+5. Arena and puzzle logic.
+6. Basic enemy AI.
+7. First designed arena.
+8. Cannon and advanced enemy AI.
+9. Progression, additional enemies and levels.
+
+Current focus: moving from the first playable movement/camera into milestone 2.
+L_MechanicsTest already exists as a blockout. It is a permanent, convenient
+testing fixture, not a polished or designed arena. Full milestone acceptance
+checks are not yet documented as complete.
+
+IMPLEMENTED CLASSES AND ASSETS
+Source/RGB/Player/RGBPlayerCharacter.h/.cpp
+  Plane-constrained character; Enhanced Input move/jump/dash bindings;
+  last-facing direction; variable jump hold; jump buffering; fall-out recovery.
+Source/RGB/Player/RGBCharacterMovementComponent.h/.cpp
+  Custom CharacterMovementComponent: faster descent, direct air control,
+  horizontal air dash and post-dash momentum state.
+Source/RGB/Camera/RGBSideViewCameraComponent.h/.cpp
+  SpringArmComponent subclass with fixed side orientation and framing.
+Source/RGB/Player/RGBPlayerController.h/.cpp
+  Activates IMC_Player for the local player; removes it on EndPlay;
+  binds manual restart and asks the game mode to respawn.
+Source/RGB/Game/RGBGameMode.h/.cpp
+  Native pawn/controller defaults; RespawnPlayer finds Player Start,
+  unpossesses/destroys old pawn and restarts with a fresh configured pawn.
+
+Content/RGB/Maps/L_MechanicsTest.umap
+Content/RGB/Blueprints/Game/BP_RGBGameMode.uasset
+Content/RGB/Blueprints/Player/BP_RGBPlayerCharacter.uasset
+Content/RGB/Blueprints/Player/BP_RGBPlayerController.uasset
+Content/RGB/Input/IMC_Player.uasset
+Content/RGB/Input/IA_Move.uasset
+Content/RGB/Input/IA_Jump.uasset
+Content/RGB/Input/IA_Dash.uasset
+Content/RGB/Input/IA_Restart.uasset
+
+AGREED MOVEMENT AND CAMERA BEHAVIOR
+- X is horizontal travel, Z is height, Y is constrained to zero.
+- Uses CharacterMovementComponent calculations and swept collision, not a
+  physics-simulated rigid body. Ground movement has fast acceleration/braking.
+- Normal airborne control is direct: release input to stop horizontal motion,
+  reverse immediately, and preserve analog stick strength.
+- Jump press starts a jump; holding extends ascent up to JumpMaxHoldTime.
+- A short buffer remembers a jump pressed just before landing. A released
+  buffered tap still gives a short jump. Hold state controls additional height.
+- Jump buffer uses GetTimeSeconds consistently for creation and expiry.
+- Descending gravity is stronger than ascending gravity.
+- No double jump. The user wants to experiment with level design first.
+- Air dash: once per landing, airborne only, fixed horizontal direction from
+  current input or the last facing direction when input is neutral.
+- During dash: rapid X movement, zero vertical velocity and no gravity-driven
+  Z movement. Swept collision remains active; a blocking hit ends the dash.
+- After dash: gravity resumes from zero vertical velocity and momentum-based
+  air control lasts UNTIL LANDING. A rejected dash must not change air control.
+- Landing recharges dash and restores direct air control. A successful dash
+  clears an earlier buffered jump request and ends held-jump assistance.
+- Camera has absolute rotation, follows the character directly, does not rotate
+  with facing, and has a downward pitch. Camera lag/collision testing are off.
+
+CURRENT C++ DEFAULTS (NOT GUARANTEED RUNTIME BLUEPRINT VALUES)
+Observed 2026-09-11; user is actively tuning. Do not silently revert these.
+  MaxWalkSpeed: 1000 cm/s
+  MaxAcceleration / BrakingDecelerationWalking: 10000
+  JumpZVelocity: 1500 cm/s
+  GravityScale: 1.8; AirControl: 0.55
+  JumpMaxHoldTime: 0.2 s; JumpMaxCount: 1
+  JumpBufferDuration: 0.15 s
+  FallingGravityMultiplier: 2.5
+  AirDashSpeed: 1500 cm/s; AirDashDuration: 0.20 s
+  Camera rotation: pitch -10, yaw -90, roll 0
+  TargetArmLength: 20000 cm (this is the actual current source value;
+    earlier conversation used 2000, so verify intended/runtime value if relevant)
+  TargetOffset: (0, 0, 120); perspective FOV: 60
+Blueprint defaults can override constructor values. Binary asset assignments
+and runtime tuning were not inspected in the editor during this handoff pass.
+
+INTENDED INPUT CONFIGURATION
+Both keyboard and gamepad must work; no explicit device-switch mode.
+  Move: A/D, Left/Right arrows, Gamepad Left Thumbstick X-Axis.
+    IA_Move = Axis1D. Negate A/Left; dead zone on stick mapping.
+  Jump: Space, Gamepad Face Button Bottom. IA_Jump = Digital (bool).
+  Dash: Left Shift, Gamepad Right Shoulder. IA_Dash = Digital (bool).
+  Restart: R, Gamepad Special Right. IA_Restart = Digital (bool).
+Actions/mappings were instructed to have empty trigger lists. In particular,
+a Pressed trigger on Jump can end the action too early for variable height.
+Character Blueprint assigns Move/Jump/Dash actions; controller Blueprint
+assigns the mapping context and Restart action. Game mode Blueprint selects
+both configured Blueprint classes. These are expected settings, not a fresh
+binary-asset audit; verify in Unreal if input behavior disagrees.
+
+LATEST TASK: RESET / RESPAWN
+The last implementation instructions added:
+- ARGBGameMode::RespawnPlayer(AController*).
+- ARGBPlayerController::SetupInputComponent and RestartPlayer.
+- ARGBPlayerCharacter::FellOutOfWorld override.
+- IA_Restart and controller default assignment.
+- Instructions to set map Kill Z = -1000 with world bounds checks enabled.
+
+Source implementations and IA_Restart exist in the current checkout. The user
+has NOT yet explicitly reported build/playtest success for this respawn step
+in this conversation. Map Kill Z and Blueprint assignment are unverified here.
+Player respawn does not reset the whole arena/world. Later systems need their
+own reset integration. Spawn failure logs an error; keep Player Start clear.
+
+VERIFICATION STATUS AND NEXT STEPS
+- User reported successful builds repeatedly during movement/camera work.
+- User reported movement, variable jumping, buffering, faster descent, direct
+  air control and then dash working well enough for now; tuning remains open.
+- This handoff pass read files only, apart from creating this text file.
+  No build, editor test, asset inspection, commit or push was performed.
+- Next: verify the new reset/respawn on floor, mid-jump, during dash, and after
+  falling off the map. Repeat and check a single controlled pawn, camera reset,
+  refreshed dash, cleared buffer and both input devices.
+- Regression-test movement/dash at different frame rates and viewport sizes.
+- Organize labeled test areas for movement, jump heights/gaps, buffer timing,
+  dash distances/walls and recovery. Add measurement markers.
+- Update the older planning/architecture/decision documents with the user when
+  appropriate; provide edits for them unless separately authorized to write.
+- Before milestone 3, agree exact landing/jump-off color transitions, palette,
+  initial/neutral state and walking-off policy. These remain undecided.
+
+FUTURE AI DIRECTION
+Enemy knows its color, support platform, arena requirements and reachable
+platforms. It chooses between chasing the player and sabotaging progress.
+Later it reasons about cannon countdown, arrival time and line of fire, and
+intentionally accepts elimination when its color transfer harms the puzzle.
+Do not implement future AI or double jump during this movement/test-level work.
+
+LESSONS FROM THIS SESSION
+- Close Unreal, build Development Editor / Win64, then reopen for C++ changes,
+  especially constructors, reflected members and component-class replacement.
+  Apparent movement failures previously disappeared after a fresh load.
+- Trust actual compiler Output over IntelliSense underlines alone.
+- Same-folder includes use "RGBPlayerCharacter.h", not "Player/...";
+  sibling folders currently use relative includes such as "../Game/...".
+- TGuardValue is in Templates/UnrealTemplate.h, NOT Misc/GuardValue.h.
+- Do not name a local MaxAcceleration: it shadows an inherited member.
+- Do not duplicate FallingGravityMultiplier when merging header snippets.
+- ensureMsgf guards around BindAction should be positive; negative checks are
+  appropriate when the block returns early on failure.
+- Keep character input declarations in the character, not the controller.
+- Check Blueprint overrides and that the runtime pawn uses the custom movement
+  component before replacing working logic. Remove temporary per-frame logs.
+
+CROSS-PC WORKFLOW
+Before leaving a PC:
+1. Save code, maps and editor assets. Record actual build/playtest results.
+2. Ask Codex to refresh this file from the current source, Git state and session.
+3. Review changes, then commit/push code, Content/LFS assets and this file
+   together when authorized. Confirm both Git push and LFS upload succeed.
+4. Do not record the file's own future commit hash inside itself. Record the
+   inspected base commit and any pending work instead.
+
+On the receiving PC:
+1. Use UE 5.7, the Unreal C++ build toolchain, Git and Git LFS.
+2. Preserve/commit local work before switching versions. Do not discard edits.
+3. Clone if needed, or with a clean checkout use git pull --ff-only, then
+   git lfs install and git lfs pull as needed. Stop to reconcile divergence;
+   do not force-push or overwrite another PC's work.
+4. Read the version of this file that came with the checkout. If a separately
+   sent copy differs, compare its date/base commit and reconcile; do not blindly
+   overwrite newer context or treat copied context as proof code exists.
+5. Generate project files locally, build RGBEditor Development Editor / Win64,
+   and open Content/RGB/Maps/L_MechanicsTest in Unreal for verification.
+6. Tell Codex: "Read CODEX_HANDOFF.txt and AGENTS.md. Inspect the checkout,
+   then continue the next pending step. I edit the gameplay files myself."
+
+The text file can travel through Git with the rest of the project; separately
+sending it is optional. Work on one PC at a time where possible, especially
+when editing binary Unreal assets, which cannot be merged like C++ text.
+
+WHEN REFRESHING THIS FILE
+Replace stale status rather than appending an endless conversation transcript.
+Keep user workflow, agreed mechanics, actual source defaults, changed files,
+verification evidence, unresolved issues, Git base and immediate next step.
+Separate user reports, source observations and unverified editor assumptions.
+Refreshing the handoff does not by itself authorize a commit or push.
