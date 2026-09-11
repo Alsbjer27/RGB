@@ -16,6 +16,9 @@ MOST IMPORTANT: HOW TO WORK WITH THE USER
   replacement function, or replacement of a complete file. Avoid duplicate members.
 - Explain the purpose of each change in small, buildable steps. Wait for the
   user's build/playtest result before proceeding with dependent implementation.
+- Editor instructions need very small steps with exact clicks. The user found
+  multi-step area organization instructions confusing; guide one operation at
+  a time, and use their screenshots to confirm placement and values.
 - Create new Unreal classes through Tools > New C++ Class in Unreal Editor.
   The user edits their generated C++ files in Visual Studio.
 - Read-only repository/source/log inspection is welcome for diagnosis.
@@ -32,12 +35,17 @@ PROJECT AND GIT SNAPSHOT
   Use the actual checkout path on the other PC; do not hard-code this path.
 - Repository: https://github.com/Alsbjer27/RGB.git
 - Branch observed: main.
-- Inspected base commit: 72257597d9a79ed0651cae437123d0789c7dee2b
-  Commit title: A lot of stuff
-- Working tree was clean before creating this handoff. Local origin/main matched
-  main at inspection, but no fresh network fetch was performed in this pass.
-- The base commit above predates this file's creation; it is deliberately not
-  the hash of the future commit containing this file.
+- Current PC path: C:\Users\emilr\Desktop\SpelProjekt\RGB
+- Inspected base commit: 141dae31a03e69b768ff6847ab435778c23c4f1f
+  Commit title: Added context txt
+- Pending modified files: BP_RGBPlayerCharacter.uasset, L_MechanicsTest.umap,
+  RGBPlayerCharacter.cpp, RGBCharacterMovementComponent.h, and this handoff.
+- Pending new files: Source/RGB/Camera/RGBArenaCameraZone.h/.cpp,
+  Content/RGB/Blueprints/Map_Arena/BP_ArenaCameraZone.uasset,
+  and RGB_PLATFORMING.txt. Include new files in the user's eventual commit.
+- No fetch, commit, push, or LFS transfer was performed in this refresh.
+  The user plans to push themselves. This is the inspected base, not the hash
+  of the future commit containing the refreshed handoff.
 - Unreal .uasset/.umap files and large art/audio formats use Git LFS.
 - Generated Binaries, Intermediate, Saved, DerivedDataCache, .vs and .sln files
   are ignored. Do not move those between PCs as a substitute for rebuilding.
@@ -57,7 +65,7 @@ Read AGENTS.md, PROJECT_PLAN.md, ARCHITECTURE.md and DECISIONS.md too.
 The user approved the initial documentation and authorized implementation.
 Their old 'awaiting initial review/no gameplay implemented' wording is stale;
 do not repeat that approval gate. Those documents have not yet been fully
-updated to reflect movement, dash, and respawn work. This file records the
+updated to reflect movement, dash, respawn, and arena-camera work. This file records the
 newer session context, but current source and tests establish actual behavior.
 
 MILESTONE ORDER
@@ -71,7 +79,10 @@ MILESTONE ORDER
 8. Cannon and advanced enemy AI.
 9. Progression, additional enemies and levels.
 
-Current focus: moving from the first playable movement/camera into milestone 2.
+Current focus: milestone 2, a platforming arena blockout with a fixed arena view.
+The user explicitly requested this camera extension before more platform layout.
+This is a mechanics-test arena, not milestone 5 puzzle logic or milestone 7's
+first designed gameplay arena. No color/combat/puzzle implementation yet.
 L_MechanicsTest already exists as a blockout. It is a permanent, convenient
 testing fixture, not a polished or designed arena. Full milestone acceptance
 checks are not yet documented as complete.
@@ -85,6 +96,9 @@ Source/RGB/Player/RGBCharacterMovementComponent.h/.cpp
   horizontal air dash and post-dash momentum state.
 Source/RGB/Camera/RGBSideViewCameraComponent.h/.cpp
   SpringArmComponent subclass with fixed side orientation and framing.
+Source/RGB/Camera/RGBArenaCameraZone.h/.cpp
+  Actor containing SceneRoot, ArenaBounds box, and ArenaCamera; timer-driven
+  capsule-overlap checks blend to a fixed view and back. See pending defect below.
 Source/RGB/Player/RGBPlayerController.h/.cpp
   Activates IMC_Player for the local player; removes it on EndPlay;
   binds manual restart and asks the game mode to respawn.
@@ -96,6 +110,7 @@ Content/RGB/Maps/L_MechanicsTest.umap
 Content/RGB/Blueprints/Game/BP_RGBGameMode.uasset
 Content/RGB/Blueprints/Player/BP_RGBPlayerCharacter.uasset
 Content/RGB/Blueprints/Player/BP_RGBPlayerController.uasset
+Content/RGB/Blueprints/Map_Arena/BP_ArenaCameraZone.uasset
 Content/RGB/Input/IMC_Player.uasset
 Content/RGB/Input/IA_Move.uasset
 Content/RGB/Input/IA_Jump.uasset
@@ -113,6 +128,9 @@ AGREED MOVEMENT AND CAMERA BEHAVIOR
   buffered tap still gives a short jump. Hold state controls additional height.
 - Jump buffer uses GetTimeSeconds consistently for creation and expiry.
 - Descending gravity is stronger than ascending gravity.
+- Flat-base floor checks are enabled. User reported wall/box-edge sticking,
+  especially around ascent and landing; enabling this improved it and the user
+  accepted the result. Collision remains a capsule, not a rectangular collider.
 - No double jump. The user wants to experiment with level design first.
 - Air dash: once per landing, airborne only, fixed horizontal direction from
   current input or the last facing direction when input is neutral.
@@ -124,23 +142,32 @@ AGREED MOVEMENT AND CAMERA BEHAVIOR
   clears an earlier buffered jump request and ends held-jump assistance.
 - Camera has absolute rotation, follows the character directly, does not rotate
   with facing, and has a downward pitch. Camera lag/collision testing are off.
+- Entering the arena blends to its fixed camera; leaving blends back to the
+  player. User wants a quick smooth transition and approved the tested result.
 
 CURRENT C++ DEFAULTS (NOT GUARANTEED RUNTIME BLUEPRINT VALUES)
 Observed 2026-09-11; user is actively tuning. Do not silently revert these.
   MaxWalkSpeed: 1000 cm/s
   MaxAcceleration / BrakingDecelerationWalking: 10000
-  JumpZVelocity: 1500 cm/s
-  GravityScale: 1.8; AirControl: 0.55
+  JumpZVelocity: 3000 cm/s (DIFFERS from tested Blueprint value below)
+  GravityScale: 3.0; AirControl: 0.55
   JumpMaxHoldTime: 0.2 s; JumpMaxCount: 1
   JumpBufferDuration: 0.15 s
-  FallingGravityMultiplier: 2.5
-  AirDashSpeed: 1500 cm/s; AirDashDuration: 0.20 s
+  FallingGravityMultiplier: 2.0
+  bUseFlatBaseForFloorChecks: true
+  AirDashSpeed: 1500 cm/s; AirDashDuration: 0.30 s
   Camera rotation: pitch -10, yaw -90, roll 0
   TargetArmLength: 20000 cm (this is the actual current source value;
     earlier conversation used 2000, so verify intended/runtime value if relevant)
   TargetOffset: (0, 0, 120); perspective FOV: 60
-Blueprint defaults can override constructor values. Binary asset assignments
-and runtime tuning were not inspected in the editor during this handoff pass.
+Blueprint defaults can override constructor values. User discovered changing
+C++ JumpZVelocity alone did not change their jump; changing Blueprint did.
+Screenshots of the tested Blueprint settings showed JumpZVelocity 1000 cm/s,
+GravityScale 3.0, MaxWalkSpeed 1000 cm/s, FallingGravityMultiplier 2.0.
+Jump hold remains 0.2 s in source; screenshot also showed Don't Fall Below Jump
+Z Velocity During Jump enabled. Do not reset overrides to the 3000 source
+default silently. Runtime dash duration was not confirmed against Blueprint.
+Binary assets were not independently audited during this refresh.
 
 INTENDED INPUT CONFIGURATION
 Both keyboard and gamepad must work; no explicit device-switch mode.
@@ -156,29 +183,99 @@ assigns the mapping context and Restart action. Game mode Blueprint selects
 both configured Blueprint classes. These are expected settings, not a fresh
 binary-asset audit; verify in Unreal if input behavior disagrees.
 
-LATEST TASK: RESET / RESPAWN
-The last implementation instructions added:
+RESET / RESPAWN STATUS
+Implemented previously:
 - ARGBGameMode::RespawnPlayer(AController*).
 - ARGBPlayerController::SetupInputComponent and RestartPlayer.
 - ARGBPlayerCharacter::FellOutOfWorld override.
 - IA_Restart and controller default assignment.
 - Instructions to set map Kill Z = -1000 with world bounds checks enabled.
 
-Source implementations and IA_Restart exist in the current checkout. The user
-has NOT yet explicitly reported build/playtest success for this respawn step
-in this conversation. Map Kill Z and Blueprint assignment are unverified here.
+User now explicitly reports floor, mid-jump, dash, and falling-off-map respawn
+tests all work well. Map Kill Z and Blueprint assignment were not independently
+inspected here. Arena-camera-specific respawn checks remain pending below.
 Player respawn does not reset the whole arena/world. Later systems need their
 own reset integration. Spawn failure logs an error; keep Player Start clear.
 
+MECHANICS MAP AND MEASUREMENTS
+- User added a Text Render sign reading 01 - MOVEMENT and confirmed it is
+  readable during play. Editor label in screenshots is 01_Movement.
+- User confirmed left/right motion, release-to-stop, reversing, and partial
+  analog-stick speed all work as expected.
+- User created standard cube jumping platforms and measured full held jumps,
+  without dash; notes say no coyote help. RGB_PLATFORMING.txt stores raw notes.
+- Both measured platforms have scale (5, 4, 0.5), zero rotation: 500 cm along X,
+  400 along Y, 50 thick. Actor locations are cube centers.
+- Vertical limit reported: 670 - 330 = 340 cm in Z. Equal thickness means
+  the top surfaces differ by 340 cm too.
+- Horizontal limit reported: 3660 - 2250 = 1410 cm center-to-center in X,
+  equivalent to 910 cm clear edge gap for these 500 cm cubes.
+- These are user playtest measurements, not automated physics guarantees.
+  Height and horizontal limits are separate; do not combine both in one jump.
+- Proposed same-height gap tests: 400/600/800 cm clear gaps, requiring X center
+  separations of 900/1100/1300 cm. Keep 910 cm as a limit test. These test rows
+  are proposed, not confirmed built. Earlier 300 cm introductory gap was used.
+- Proposed upward tests of 150/250/300 cm with 100 cm gaps were not confirmed
+  built or verified. Continue layout around the accepted camera view.
+
+ARENA CAMERA IMPLEMENTATION AND EDITOR SETTINGS
+- User created ARGBArenaCameraZone through Unreal's New C++ Class wizard.
+  Blueprint asset is BP_ArenaCameraZone, not BP_RGBArenaCameraZone.
+- ArenaBounds defaults: half extents (1500, 300, 1000), query-only collision,
+  ignore all channels except Pawn overlap, generate overlap events enabled.
+- BeginPlay starts UpdateCameraZone every 0.05 s; Actor Tick disabled.
+  Checks local player index 0 and overlap with RGB player's capsule.
+- Intended: enter or replacement pawn inside -> blend to this actor's camera;
+  exit -> blend to possessed character. SetViewTargetWithBlend uses duration
+  0.35 s, VTBlend_EaseInOut, exponent 2, lock outgoing true.
+- EndPlay clears timer; on zone destruction tries to restore possessed pawn
+  through tracked controller. This depends on the missing assignments below.
+- This version targets one arena zone / one local player. No ownership or
+  priority arbitration for overlapping zones; do not assume multi-zone support.
+- User initially rotated whole zone actor X by 12 degrees, then requested only
+  the camera change. Agreed whole actor rotation should remain (0,0,0).
+- Latest accepted screenshot shows Blueprint ArenaCamera relative location
+  (0, 4000, -200), rotation UI X/Y/Z (0, 0, -90), perspective FOV 60.
+  Camera was moved downward; user is happy with this view.
+- Source constructor still uses camera location (0,4000,700), FRotator(0,-90,0),
+  FOV 60. Preserve the Blueprint camera placement override.
+- Earlier actor placement screenshot: location (3904,0,657). Final saved
+  instance placement/overrides were not independently inspected.
+
+IMPORTANT PENDING SOURCE DEFECT FOUND DURING HANDOFF REFRESH
+- Current saved UpdateCameraZone computes bPlayerChanged but NEVER assigns
+  TrackedPawn or TrackedController. Both assignments were in the supplied
+  instructions but are absent from the user's current file.
+- Therefore bPlayerChanged remains true for a valid player, causing the arena
+  blend to be requested every 0.05 s while inside. Destruction cleanup also
+  lacks its tracked controller. User reported a good camera playtest; that
+  report does not establish this source discrepancy is harmless.
+- Next code correction to give the user: immediately AFTER calculating
+  bPlayerChanged and BEFORE if (bPlayerInside), ADD:
+      TrackedPawn = Player;
+      TrackedController = PlayerController;
+- Do not place assignments before calculating bPlayerChanged. Do not edit
+  gameplay files on the user's behalf. This refresh changes only this handoff.
+- Rebuild and retest after the user adds the assignments.
+
 VERIFICATION STATUS AND NEXT STEPS
-- User reported successful builds repeatedly during movement/camera work.
-- User reported movement, variable jumping, buffering, faster descent, direct
-  air control and then dash working well enough for now; tuning remains open.
-- This handoff pass read files only, apart from creating this text file.
-  No build, editor test, asset inspection, commit or push was performed.
-- Next: verify the new reset/respawn on floor, mid-jump, during dash, and after
-  falling off the map. Repeat and check a single controlled pawn, camera reset,
-  refreshed dash, cleared buffer and both input devices.
+- User reported successful build of camera-zone components and successful
+  transition-code correction (class-name typo ARBGArena vs ARGBArena).
+  They were instructed to build Development Editor / Win64; no compiler log
+  or exact executed build command was captured by Codex this session.
+- User reported entering/leaving and fixed camera behavior works incredibly
+  well. Preserve that feedback, alongside the saved-source defect above.
+- Immediate next step: provide the two missing tracking assignments, wait for
+  user build result, then retest transitions and standing inside longer than
+  blend duration. Check quick boundary reversals too.
+- Pending requested checks: restart inside arena (camera should match new
+  spawn location) and jump near boundaries without unwanted camera switching.
+  Increase boundary height if jumps unintentionally leave it. User has not
+  yet reported results for these arena-specific checks.
+- Then continue building the platforming arena in L_MechanicsTest around the
+  accepted fixed view, using measured jump distances and short editor steps.
+- This refresh inspected source/Git/files and updated only CODEX_HANDOFF.txt.
+  Codex did not run a build or PIE, modify gameplay/assets, commit, or push.
 - Regression-test movement/dash at different frame rates and viewport sizes.
 - Organize labeled test areas for movement, jump heights/gaps, buffer timing,
   dash distances/walls and recovery. Add measurement markers.
@@ -209,6 +306,8 @@ LESSONS FROM THIS SESSION
 - Keep character input declarations in the character, not the controller.
 - Check Blueprint overrides and that the runtime pawn uses the custom movement
   component before replacing working logic. Remove temporary per-frame logs.
+- .gitattributes currently includes *.blend1 LFS coverage; older planning
+  documents/AGENTS wording saying it is uncovered is stale.
 
 CROSS-PC WORKFLOW
 Before leaving a PC:

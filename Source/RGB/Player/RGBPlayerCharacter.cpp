@@ -48,14 +48,15 @@ ARGBPlayerCharacter::ARGBPlayerCharacter(const FObjectInitializer& ObjectInitial
 	Movement->MaxAcceleration = 10000.0f;
 	Movement->BrakingDecelerationWalking = 10000.0f;
 
-	Movement->JumpZVelocity = 1500.0f;
-	Movement->GravityScale = 1.8f;
+	Movement->JumpZVelocity = 3000.0f;
+	Movement->GravityScale = 3.0f;
 	Movement->AirControl = 0.55f;
 
 	JumpMaxHoldTime = 0.2f;
 	JumpMaxCount = 1;
 
 	Movement->bApplyGravityWhileJumping = true;
+	Movement->bUseFlatBaseForFloorChecks = true;
 
 	SideViewCameraArm = CreateDefaultSubobject<URGBSideViewCameraComponent>(TEXT("SideViewCameraArm"));
 	SideViewCameraArm->SetupAttachment(GetRootComponent());

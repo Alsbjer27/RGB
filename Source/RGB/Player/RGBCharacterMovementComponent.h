@@ -22,7 +22,7 @@ public:
 protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Movement", meta = (ClampMin = "1.0"))
-	float FallingGravityMultiplier = 2.5f;
+	float FallingGravityMultiplier = 2.0f;
 
 	virtual void PhysFalling(float DeltaTime, int32 Iterations) override;
 
@@ -32,7 +32,7 @@ protected:
 	float AirDashSpeed = 1500.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Dash", meta = (ClampMin = "0.01", Units = "s"))
-	float AirDashDuration = 0.20f;
+	float AirDashDuration = 0.30f;
 
 private:
 	void PhysAirDash(float DeltaTime, int32 Iterations);

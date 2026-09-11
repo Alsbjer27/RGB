@@ -1,0 +1,3 @@
+RGB PLATFORMING:
+MAX Distance between two platforms Height: 670 - 330 = 340 in Z-location.
+MAX Distnace between two platforms Width: 3660 - 2250 = 1410 in X-location (No Coyote help)
