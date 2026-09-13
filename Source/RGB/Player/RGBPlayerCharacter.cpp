@@ -15,6 +15,7 @@
 #include "RGBCharacterMovementComponent.h"
 
 #include "../Game/RGBGameMode.h"
+#include "../Platforms/RGBColorPlatform.h"
 
 
 
@@ -89,6 +90,26 @@ void ARGBPlayerCharacter::BeginPlay()
 	
 }
 
+void ARGBPlayerCharacter::Landed(const FHitResult& Hit)
+{
+	Super::Landed(Hit);
+
+	ARGBColorPlatform* Platform = Cast<ARGBColorPlatform>(Hit.GetActor());
+
+	if (IsValid(Platform)) {
+		Platform->GetColorComponent()->AdvanceColor();
+	}
+}
+
+void ARGBPlayerCharacter::OnJumped_Implementation()
+{
+	Super::OnJumped_Implementation();
+
+	if (ARGBColorPlatform* Platform = JumpSourcePlatform.Get()) {
+		Platform->GetColorComponent()->AdvanceColor();
+	}
+}
+
 void ARGBPlayerCharacter::Move(const FInputActionValue& Value)
 {
 	const float MoveAmount = FMath::Clamp(Value.Get<float>(), -1.0f, 1.0f);
@@ -146,7 +167,17 @@ void ARGBPlayerCharacter::CheckJumpInput(float DeltaTime)
 		}
 	}
 
+	JumpSourcePlatform.Reset();
+
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+
+	if (Movement->IsMovingOnGround()) {
+		JumpSourcePlatform = Cast<ARGBColorPlatform>(Movement->CurrentFloor.HitResult.GetActor());
+	}
+
 	Super::CheckJumpInput(DeltaTime);
+
+	JumpSourcePlatform.Reset();
 
 	if (!bJumpInputHeld) {
 		StopJumping();

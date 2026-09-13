@@ -14,6 +14,8 @@ struct FInputActionValue;
 
 class UDamageType;
 
+class ARGBColorPlatform;
+
 UCLASS()
 class RGB_API ARGBPlayerCharacter : public ACharacter
 {
@@ -29,6 +31,11 @@ public:
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
+
+	virtual void Landed(const FHitResult& Hit) override;
+
+	virtual void OnJumped_Implementation() override;
+	TWeakObjectPtr<ARGBColorPlatform> JumpSourcePlatform;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RGB|Camera")
 	TObjectPtr<URGBSideViewCameraComponent> SideViewCameraArm;

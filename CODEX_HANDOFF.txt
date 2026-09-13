@@ -1,5 +1,5 @@
 RGB - CROSS-PC CODEX HANDOFF
-Last updated: 2026-09-11 (Europe/Stockholm)
+Last updated: 2026-09-13 (Europe/Stockholm)
 
 PURPOSE
 Read this file when continuing RGB in a new Codex conversation or on another PC.
@@ -31,30 +31,33 @@ MOST IMPORTANT: HOW TO WORK WITH THE USER
 
 PROJECT AND GIT SNAPSHOT
 - Unreal Engine 5.7, C++ project, one runtime module named RGB.
-- Original PC path: C:\Users\manun\Desktop\Spelprojekt\RGB
-  Use the actual checkout path on the other PC; do not hard-code this path.
+- Current PC: C:\Users\manun\Desktop\Spelprojekt\RGB
+- Other PC: C:\Users\emilr\Desktop\SpelProjekt\RGB
+  Resolve paths against the actual checkout on each PC.
 - Repository: https://github.com/Alsbjer27/RGB.git
-- Branch observed: main.
-- Current PC path: C:\Users\emilr\Desktop\SpelProjekt\RGB
-- Inspected base commit: 141dae31a03e69b768ff6847ab435778c23c4f1f
-  Commit title: Added context txt
-- Pending modified files: BP_RGBPlayerCharacter.uasset, L_MechanicsTest.umap,
-  RGBPlayerCharacter.cpp, RGBCharacterMovementComponent.h, and this handoff.
-- Pending new files: Source/RGB/Camera/RGBArenaCameraZone.h/.cpp,
-  Content/RGB/Blueprints/Map_Arena/BP_ArenaCameraZone.uasset,
-  and RGB_PLATFORMING.txt. Include new files in the user's eventual commit.
-- No fetch, commit, push, or LFS transfer was performed in this refresh.
-  The user plans to push themselves. This is the inspected base, not the hash
-  of the future commit containing the refreshed handoff.
-- Unreal .uasset/.umap files and large art/audio formats use Git LFS.
-- Generated Binaries, Intermediate, Saved, DerivedDataCache, .vs and .sln files
-  are ignored. Do not move those between PCs as a substitute for rebuilding.
-
+- Inspected base commit: 5a1a8df - Movement details, arena camera config started.
+  Previously observed branch: main; branch name was not rechecked this refresh.
+- Pending tracked changes observed before this refresh: Config/DefaultEngine.ini,
+  L_MechanicsTest.umap, RGB_PLATFORMING.txt, RGBArenaCameraZone.cpp,
+  RGBGameMode.h/.cpp, RGBPlayerCharacter.h/.cpp and RGBPlayerController.cpp.
+- Pending new content: Source/RGB/Platforms, Content/RGB/Blueprints/Platforms,
+  Content/RGB/Materials, Content/RGB/Assets, Config/DefaultEditor.ini,
+  BLENDER/PLATFORM.blend, PLATFORM.blend1 and PLATFORM_LARGE.fbx.
+  CODEX_HANDOFF.txt is also modified by this refresh.
+- Include required source AND assets in the user's eventual commit. Actual
+  status can change after Save All; this is not a staged-file inventory.
+- .gitattributes covers .uasset, .umap, .fbx, .blend, .blend1 and .png with LFS.
+- User will push themselves. Codex did not fetch, stage, commit or push.
+- Generated Binaries, Intermediate, Saved, DerivedDataCache, .vs and .sln
+  should not be committed or transferred as a substitute for rebuilding.
+- User installed Visual Studio Community 2026 alongside 2022 and reports it
+  works. Installer included MSVC v143 14.44 and Windows SDK. Exact active
+  compiler/toolchain was not verified; preserve the working UE 5.7 toolchain.
 GAME PREMISE AND DEVELOPMENT RULES
 2.5D action-puzzle platformer. Players change platform colors by landing on or
 jumping off platforms. Color-specific weapons eliminate matching enemies.
 Eliminated enemies transfer their color to the platform beneath them. Arenas
-are solved by reaching a required platform-color configuration.
+are solved when all participating platforms share any one RGB color. Compare color state, not material references. Completion evaluation is not implemented yet.
 
 C++ owns gameplay rules, movement, camera behavior, weapons, platform state,
 arena evaluation, enemy AI and reusable systems. Blueprints supply asset
@@ -79,14 +82,13 @@ MILESTONE ORDER
 8. Cannon and advanced enemy AI.
 9. Progression, additional enemies and levels.
 
-Current focus: milestone 2, a platforming arena blockout with a fixed arena view.
-The user explicitly requested this camera extension before more platform layout.
-This is a mechanics-test arena, not milestone 5 puzzle logic or milestone 7's
-first designed gameplay arena. No color/combat/puzzle implementation yet.
-L_MechanicsTest already exists as a blockout. It is a permanent, convenient
-testing fixture, not a polished or designed arena. Full milestone acceptance
-checks are not yet documented as complete.
-
+Current focus: milestone 3 platform colors and integration of a modeled platform.
+User reports landing/jump-off colors, optional randomized starts, rerolling on
+manual reset, and the new mesh/material integration work well.
+Next proposed milestone: 4, basic combat with stationary enemies first.
+No combat, enemy AI, cannon or arena completion implementation exists yet.
+L_MechanicsTest remains the permanent mechanics blockout. Full milestone
+acceptance and all regression checks are not documented as complete.
 IMPLEMENTED CLASSES AND ASSETS
 Source/RGB/Player/RGBPlayerCharacter.h/.cpp
   Plane-constrained character; Enhanced Input move/jump/dash bindings;
@@ -98,7 +100,7 @@ Source/RGB/Camera/RGBSideViewCameraComponent.h/.cpp
   SpringArmComponent subclass with fixed side orientation and framing.
 Source/RGB/Camera/RGBArenaCameraZone.h/.cpp
   Actor containing SceneRoot, ArenaBounds box, and ArenaCamera; timer-driven
-  capsule-overlap checks blend to a fixed view and back. See pending defect below.
+  capsule-overlap checks blend to a fixed view and back. Tracking defect fixed.
 Source/RGB/Player/RGBPlayerController.h/.cpp
   Activates IMC_Player for the local player; removes it on EndPlay;
   binds manual restart and asks the game mode to respawn.
@@ -191,12 +193,19 @@ Implemented previously:
 - IA_Restart and controller default assignment.
 - Instructions to set map Kill Z = -1000 with world bounds checks enabled.
 
-User now explicitly reports floor, mid-jump, dash, and falling-off-map respawn
-tests all work well. Map Kill Z and Blueprint assignment were not independently
-inspected here. Arena-camera-specific respawn checks remain pending below.
-Player respawn does not reset the whole arena/world. Later systems need their
-own reset integration. Spawn failure logs an error; keep Player Start clear.
-
+User reported floor, mid-jump, dash and falling-off-map respawn work.
+Manual restart now calls ARGBGameMode::RestartMechanicsTest:
+- RespawnPlayer first; if successful, iterate ARGBColorPlatform actors once and
+  call their color components' ResetColor. This is not a per-frame search.
+- Random-enabled platforms reroll on EVERY manual restart; fixed-color platforms
+  restore InitialColor. User explicitly requested rerolling within one play session.
+- Falling out of the world still calls RespawnPlayer only, not platform reset.
+- Keep Player Start clear and on ordinary floor; spawning onto a color platform
+  can count as a landing and change its color.
+- Known small source defect: RestartMechanicsTest returns false at its final
+  success path. Controller currently ignores the return value, so observed reset
+  still works. Next session, give user the one-line fix to return true at the
+  function's end (keep failure return false), then rebuild. Do not edit for them.
 MECHANICS MAP AND MEASUREMENTS
 - User added a Text Render sign reading 01 - MOVEMENT and confirmed it is
   readable during play. Editor label in screenshots is 01_Movement.
@@ -229,7 +238,7 @@ ARENA CAMERA IMPLEMENTATION AND EDITOR SETTINGS
   exit -> blend to possessed character. SetViewTargetWithBlend uses duration
   0.35 s, VTBlend_EaseInOut, exponent 2, lock outgoing true.
 - EndPlay clears timer; on zone destruction tries to restore possessed pawn
-  through tracked controller. This depends on the missing assignments below.
+  through tracked controller. Tracking assignments are now present.
 - This version targets one arena zone / one local player. No ownership or
   priority arbitration for overlapping zones; do not assume multi-zone support.
 - User initially rotated whole zone actor X by 12 degrees, then requested only
@@ -242,48 +251,111 @@ ARENA CAMERA IMPLEMENTATION AND EDITOR SETTINGS
 - Earlier actor placement screenshot: location (3904,0,657). Final saved
   instance placement/overrides were not independently inspected.
 
-IMPORTANT PENDING SOURCE DEFECT FOUND DURING HANDOFF REFRESH
-- Current saved UpdateCameraZone computes bPlayerChanged but NEVER assigns
-  TrackedPawn or TrackedController. Both assignments were in the supplied
-  instructions but are absent from the user's current file.
-- Therefore bPlayerChanged remains true for a valid player, causing the arena
-  blend to be requested every 0.05 s while inside. Destruction cleanup also
-  lacks its tracked controller. User reported a good camera playtest; that
-  report does not establish this source discrepancy is harmless.
-- Next code correction to give the user: immediately AFTER calculating
-  bPlayerChanged and BEFORE if (bPlayerInside), ADD:
-      TrackedPawn = Player;
-      TrackedController = PlayerController;
-- Do not place assignments before calculating bPlayerChanged. Do not edit
-  gameplay files on the user's behalf. This refresh changes only this handoff.
-- Rebuild and retest after the user adds the assignments.
+CAMERA TRACKING FIX
+- Previously missing TrackedPawn = Player and TrackedController = PlayerController
+  are now present after bPlayerChanged is computed, before the inside/outside branch.
+- This removes the stale pending-defect instruction from the other PC.
+- Continue to preserve the user's accepted camera tuning.
 
-VERIFICATION STATUS AND NEXT STEPS
-- User reported successful build of camera-zone components and successful
-  transition-code correction (class-name typo ARBGArena vs ARGBArena).
-  They were instructed to build Development Editor / Win64; no compiler log
-  or exact executed build command was captured by Codex this session.
-- User reported entering/leaving and fixed camera behavior works incredibly
-  well. Preserve that feedback, alongside the saved-source defect above.
-- Immediate next step: provide the two missing tracking assignments, wait for
-  user build result, then retest transitions and standing inside longer than
-  blend duration. Check quick boundary reversals too.
-- Pending requested checks: restart inside arena (camera should match new
-  spawn location) and jump near boundaries without unwanted camera switching.
-  Increase boundary height if jumps unintentionally leave it. User has not
-  yet reported results for these arena-specific checks.
-- Then continue building the platforming arena in L_MechanicsTest around the
-  accepted fixed view, using measured jump distances and short editor steps.
-- This refresh inspected source/Git/files and updated only CODEX_HANDOFF.txt.
-  Codex did not run a build or PIE, modify gameplay/assets, commit, or push.
-- Regression-test movement/dash at different frame rates and viewport sizes.
-- Organize labeled test areas for movement, jump heights/gaps, buffer timing,
-  dash distances/walls and recovery. Add measurement markers.
-- Update the older planning/architecture/decision documents with the user when
-  appropriate; provide edits for them unless separately authorized to write.
-- Before milestone 3, agree exact landing/jump-off color transitions, palette,
-  initial/neutral state and walking-off policy. These remain undecided.
+PLATFORM COLOR IMPLEMENTATION
+- Source/RGB/Platforms/RGBColorComponent.h/.cpp:
+  URGBColorComponent owns ERGBColor (Red, Green, Blue), CurrentColor,
+  InitialColor, StartingColor and bRandomizeInitialColor (default false).
+  SetColor validates enum, ignores unchanged values and broadcasts
+  FRGBColorChangedSignature OnColorChanged(PreviousColor, NewColor).
+  AdvanceColor cycles Red -> Green -> Blue -> Red.
+  BeginPlay calls ResetColor. ResetColor uses InitialColor unless randomness is
+  enabled, then selects one of the three with RandRange(0,2) EACH time.
+  StartingColor therefore holds the latest roll, not a permanent original seed.
+  Random selection is independent; an even spread or a different roll is not guaranteed.
+- Source/RGB/Platforms/RGBColorPlatform.h/.cpp:
+  ARGBColorPlatform has PlatformMesh root, BlockAll, no simulated physics,
+  ColorComponent and three editor-assigned material references.
+  Construction previews InitialColor; BeginPlay binds the delegate and applies
+  CurrentColor. ApplyColorMaterial selects the appropriate material.
+  NEW: protected EditDefaultsOnly ColorMaterialIndex = 0 (ClampMin 0).
+  SetMaterial(ColorMaterialIndex, SelectedMaterial) targets the chosen slot.
+  Existing cube platforms keep 0; modeled platform uses 1.
+- RGBPlayerCharacter::Landed advances the landed-on color platform once.
+  CheckJumpInput captures the grounded CurrentFloor actor in weak JumpSourcePlatform
+  before Super::CheckJumpInput. OnJumped_Implementation advances it on successful
+  jump; temporary reference is cleared afterwards.
+- Agreed interactions: landing and deliberate jump-off each advance once.
+  Walking off, side contact and underside contact do not advance. A buffered
+  landing followed by takeoff can advance twice (two intended events).
+- Blueprint assets: Content/RGB/Blueprints/Platforms/BP_RGBColorPlatform.uasset
+  and BP_RGBPlatformLarge.uasset. Blueprints configure assets, not rules.
+- Future combat: matching weapon kills enemy; platform beneath takes ENEMY color
+  directly, not the next cycle color. Example red weapon kills red enemy on blue
+  platform -> red platform. Future cannon elimination transfers enemy color too.
+  Shared elimination/transfer handling should avoid duplicate application.
+- Arena goal: all participating platforms the same RGB state, any of the three.
+  No authoritative rules should compare materials. Completion timing/latching
+  and platform registration remain for milestone 5.
 
+MODELED PLATFORM AND MATERIALS
+- User renamed proposed Art folder to Assets.
+  Content/RGB/Assets/Platforms contains Meshes, Materials, Textures and
+  EmilsTexturer (original seven PNG textures).
+- Mesh: Meshes/PLATFORM_LARGE.uasset from BLENDER/PLATFORM_LARGE.fbx.
+  Blender dimensions and imported bounds are 10 x 8 x 1 meters, twice intended.
+  Keep mesh/component scale 1; placed BP_RGBPlatformLarge actors use uniform
+  0.5 scale to obtain 500 x 400 x 50 cm. Duplicate a correctly scaled actor.
+  No re-export is needed for current setup; texture UVs remain aligned.
+- FBX imported as combined static mesh, with three material slots.
+  Screenshot showed Nanite enabled and one collision primitive; BlockAll,
+  project-default collision complexity. User confirmed landing works.
+- Slot 0 M_PLATFORM_BIG_COLOR -> M_PlatformLarge_Body.
+- Slot 1 M_PLATFORM_COLOR -> M_PlatformLarger_Color (actual spelling: Larger).
+- Slot 2 M_CYLINDERS -> M_PlatformLarge_Cylinder (singular).
+  Material files are under Content/RGB/Assets/Platforms/Materials.
+- Seven texture assets under Textures:
+  M_PLATFORM_BIG_COLOR_Base_color / M_PLATFORM_BIG_COLOR_Roughness,
+  M_PLATFORM_COLOR_Base_color / M_PLATFORM_COLOR_Roughness /
+  M_PLATFORM_COLOR_Emissive,
+  M_CYLINDERS_Base_color / M_CYLINDERS_Roughness.
+  User disabled sRGB on roughness textures; base-color textures use sRGB.
+- Body/cylinder materials use their own base RGB -> Base Color and roughness
+  R -> Roughness; these parts intentionally retain their authored appearance.
+- M_PlatformLarger_Color remains Default Lit, with this confirmed graph:
+    Base-color texture R * PlatformColor RGB -> Base Color
+    Roughness texture R -> Roughness
+    Emissive texture R * PlatformColor RGB * EmissiveStrength -> Emissive Color
+  Single shared Vector Parameter PlatformColor drives both color branches.
+  Using red-channel brightness allows recoloring red-authored textures without
+  multiplying red RGB by green/blue and making them black.
+  EmissiveStrength scalar shown at 5; user accepted glow. No post-process change
+  was confirmed. Bloom can be tuned later; preview and level exposure differ.
+- Instances: MI_PlatformLarge_Red (1,0,0), MI_PlatformLarge_Green (0,1,0),
+  MI_PlatformLarge_Blue (0,0,1), inheriting emission strength.
+- BP_RGBPlatformLarge was created as child of BP_RGBColorPlatform.
+  PlatformMesh = PLATFORM_LARGE; Class Defaults ColorMaterialIndex = 1 and
+  Red/Green/Blue Material reference the NEW instances above.
+  Confirm slot 0 remains body material if inherited cube overrides reappear.
+- User tested in the arena and reports it works well after being asked to check
+  collision, landing/takeoff color changes, matching glow, unchanged body/cylinders.
+  A plain mesh actor is only visual/collision and does not implement color gameplay.
+
+VERIFICATION AND NEXT SESSION
+- This refresh read source, asset filenames, .gitattributes, git status and
+  git log. Only CODEX_HANDOFF.txt was edited by Codex.
+- User reported successful builds during platform implementation, then "done"
+  after the ColorMaterialIndex build instructions, and successful in-game
+  behavior with the custom Blueprint. Codex did not run a build or PIE.
+  No exact compiler command/log or independent binary-asset audit was captured.
+- First small follow-up: correct RestartMechanicsTest success return as noted.
+- Next proposed gameplay milestone is 4: stationary enemies, colored weapons,
+  matching elimination, and platform color transfer. User has not yet chosen
+  projectile vs trace, fire controls/weapon selection, mismatch feedback, or
+  airborne/no-platform transfer policy. Resolve these incrementally.
+- Do not add double jump, enemy AI or cannon prematurely. Double jump remains
+  deferred until user experiments with level design.
+- Retain L_MechanicsTest; add combat tests there. Remaining broader checks include
+  movement/dash across frame rates, camera boundary/respawn cases and explicit
+  color side/underside/buffered-jump regressions. Do not claim unrun checks passed.
+- Older PROJECT_PLAN/ARCHITECTURE/DECISIONS still contain obsolete status and
+  proposed rules; this handoff records newer accepted choices. Provide suggested
+  document edits later unless separately authorized to modify those files.
 FUTURE AI DIRECTION
 Enemy knows its color, support platform, arena requirements and reachable
 platforms. It chooses between chasing the player and sabotaging progress.

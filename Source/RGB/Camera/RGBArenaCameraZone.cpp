@@ -79,6 +79,9 @@ void ARGBArenaCameraZone::UpdateCameraZone()
 	const bool bPlayerInside = ArenaBounds->IsOverlappingComponent(Player->GetCapsuleComponent());
 	const bool bPlayerChanged = TrackedPawn.Get() != Player || TrackedController.Get() != PlayerController;
 
+	TrackedPawn = Player;
+	TrackedController = PlayerController;
+
 	if (bPlayerInside) {
 		if (!bArenaViewActive || bPlayerChanged) {
 			PlayerController->SetViewTargetWithBlend(this, BlendDuration, VTBlend_EaseInOut, 2.0f, true);

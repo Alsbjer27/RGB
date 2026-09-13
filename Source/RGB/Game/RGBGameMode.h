@@ -18,4 +18,6 @@ public:
 	ARGBGameMode();
 
 	bool RespawnPlayer(AController* PlayerController);
+
+	bool RestartMechanicsTest(AController* PlayerController);
 };

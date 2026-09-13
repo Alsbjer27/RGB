@@ -76,6 +76,6 @@ void ARGBPlayerController::RestartPlayer() {
 	ARGBGameMode* GameMode = GetWorld()->GetAuthGameMode<ARGBGameMode>();
 
 	if (ensureMsgf(GameMode, TEXT("Restart requires RGBGameMode"))) {
-		GameMode->RespawnPlayer(this);
+		GameMode->RestartMechanicsTest(this);
 	}
 }

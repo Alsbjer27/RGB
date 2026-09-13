@@ -9,6 +9,10 @@
 #include "GameFramework/Controller.h"
 #include "GameFramework/Pawn.h"
 
+#include "EngineUtils.h"
+#include "../Platforms/RGBColorPlatform.h"
+#include "../Platforms/RGBColorComponent.h"
+
 ARGBGameMode::ARGBGameMode()
 {
 	DefaultPawnClass = ARGBPlayerCharacter::StaticClass();
@@ -46,4 +50,20 @@ bool ARGBGameMode::RespawnPlayer(AController* PlayerController)
 	}
 
 	return bRespawnSucceeded;
+}
+
+bool ARGBGameMode::RestartMechanicsTest(AController* PlayerController)
+{
+	if (!RespawnPlayer(PlayerController)) {
+		return false;
+	}
+
+	for (TActorIterator<ARGBColorPlatform> It(GetWorld()); It; ++It)
+	{
+		ARGBColorPlatform* Platform = *It;
+		if (IsValid(Platform)) {
+			Platform->GetColorComponent()->ResetColor();
+		}
+	}
+	return false;
 }
