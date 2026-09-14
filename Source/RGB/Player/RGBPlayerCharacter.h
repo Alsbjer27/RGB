@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "../Platforms/RGBColorComponent.h"
 #include "RGBPlayerCharacter.generated.h"
 
 class UCameraComponent;
@@ -16,6 +17,10 @@ class UDamageType;
 
 class ARGBColorPlatform;
 
+class ARGBProjectile;
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FRGBWeaponColorChangedSignature, ERGBColor, NewColor);
+
 UCLASS()
 class RGB_API ARGBPlayerCharacter : public ACharacter
 {
@@ -27,6 +32,11 @@ public:
 
 	virtual void FellOutOfWorld(const UDamageType& DamageType) override;
 
+	UFUNCTION(BlueprintPure, Category = "RGB|Combat")
+	ERGBColor GetSelectedWeaponColor() const { return SelectedWeaponColor; }
+
+	UPROPERTY(BlueprintAssignable, Category = "RGB|Color")
+	FRGBWeaponColorChangedSignature OnWeaponColorChanged;
 
 protected:
 	// Called when the game starts or when spawned
@@ -69,6 +79,28 @@ protected:
 	bool bJumpInputHeld = false;
 	/* END: Jump Buffering*/
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Input")
+	TObjectPtr<UInputAction> FireAction;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Combat")
+	TSubclassOf<ARGBProjectile> ProjectileClass;
+
+	void Fire();
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Input")
+	TObjectPtr<UInputAction> NextWeaponColorAction;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Input")
+	TObjectPtr<UInputAction> PreviousWeaponColorAction;
+
+
+private:
+	void NextWeaponColor();
+	void PreviousWeaponColor();
+	void SetSelectedWeaponColor(ERGBColor NewColor);
+
+	UPROPERTY(Transient, VisibleInstanceOnly, Category = "RGB|Combat")
+	ERGBColor SelectedWeaponColor = ERGBColor::Red;
 
 public:	
 	// Called every frame

@@ -26,14 +26,40 @@ void ARGBColorPlatform::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
 
-	const ERGBColor DisplayColor = HasActorBegunPlay() ? ColorComponent->GetCurrentColor() : ColorComponent->GetInitialColor();
+	ColorComponent = GetColorComponent();
+
+	if (!IsValid(ColorComponent) ||
+		ColorComponent->GetOwner() != this ||
+		!IsValid(PlatformMesh))
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("%s: invalid platform component references during construction."),
+			*GetName());
+
+		return;
+	}
+
+	const ERGBColor DisplayColor = HasActorBegunPlay()
+		? ColorComponent->GetCurrentColor()
+		: ColorComponent->GetInitialColor();
 
 	ApplyColorMaterial(DisplayColor);
 }
 
 URGBColorComponent* ARGBColorPlatform::GetColorComponent() const
 {
-	return ColorComponent;
+	if (IsValid(ColorComponent) &&
+		ColorComponent->GetOwner() == this)
+	{
+		return ColorComponent;
+	}
+
+	URGBColorComponent* OwnedColor =
+		FindComponentByClass<URGBColorComponent>();
+
+	return IsValid(OwnedColor) && OwnedColor->GetOwner() == this
+		? OwnedColor
+		: nullptr;
 }
 
 // Called when the game starts or when spawned
@@ -41,7 +67,18 @@ void ARGBColorPlatform::BeginPlay()
 {
 	Super::BeginPlay();
 
-	ColorComponent->OnColorChanged.AddDynamic(this, &ARGBColorPlatform::HandleColorChange);
+	ColorComponent = GetColorComponent();
+
+	if (!ensureMsgf(
+		IsValid(ColorComponent) && IsValid(PlatformMesh),
+		TEXT("%s: missing platform components."),
+		*GetName()))
+	{
+		return;
+	}
+
+	ColorComponent->OnColorChanged.AddUniqueDynamic(
+		this, &ARGBColorPlatform::HandleColorChange);
 
 	ApplyColorMaterial(ColorComponent->GetCurrentColor());
 	

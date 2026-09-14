@@ -17,6 +17,10 @@
 #include "../Game/RGBGameMode.h"
 #include "../Platforms/RGBColorPlatform.h"
 
+#include "../Combat/RGBProjectile.h"
+#include "CollisionQueryParams.h"
+#include "CollisionShape.h"
+
 
 
 // Sets default values
@@ -184,6 +188,90 @@ void ARGBPlayerCharacter::CheckJumpInput(float DeltaTime)
 	}
 }
 
+void ARGBPlayerCharacter::Fire()
+{
+	if (!ensureMsgf(ProjectileClass, TEXT("Assign ProjectileClass in BP_RGBPlayerCharacter"))) {
+		return;
+	}
+
+	const FVector Direction = LastFacingDirection >= 0.0f ? FVector::ForwardVector : -FVector::ForwardVector;
+
+	const FVector Start = GetActorLocation();
+	const FVector SpawnLocation = Start + Direction * 75.0f;
+
+	FCollisionQueryParams QueryParams;
+	QueryParams.AddIgnoredActor(this);
+
+	FHitResult Hit;
+
+	const bool bBlocked = GetWorld()->SweepSingleByChannel(Hit, Start, SpawnLocation, FQuat::Identity, ECC_WorldDynamic, FCollisionShape::MakeSphere(10.0f), QueryParams);
+
+	if (bBlocked) {
+		return;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = this;
+	SpawnParams.Instigator = this;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::DontSpawnIfColliding;
+
+	ARGBProjectile* Projectile = GetWorld()->SpawnActor<ARGBProjectile>(ProjectileClass, SpawnLocation, Direction.Rotation(), SpawnParams);
+
+	if (IsValid(Projectile)) {
+		Projectile->InitializeColor(SelectedWeaponColor);
+	}
+}
+
+void ARGBPlayerCharacter::NextWeaponColor()
+{
+	switch (SelectedWeaponColor) {
+	case ERGBColor::Red:
+		SetSelectedWeaponColor(ERGBColor::Green);
+		break;
+
+	case ERGBColor::Green:
+		SetSelectedWeaponColor(ERGBColor::Blue);
+		break;
+
+	case ERGBColor::Blue:
+		SetSelectedWeaponColor(ERGBColor::Red);
+		break;
+	}
+}
+
+void ARGBPlayerCharacter::PreviousWeaponColor()
+{
+	switch (SelectedWeaponColor) {
+	case ERGBColor::Red:
+		SetSelectedWeaponColor(ERGBColor::Blue);
+		break;
+
+	case ERGBColor::Green:
+		SetSelectedWeaponColor(ERGBColor::Red);
+		break;
+
+	case ERGBColor::Blue:
+		SetSelectedWeaponColor(ERGBColor::Green);
+		break;
+	}
+}
+
+void ARGBPlayerCharacter::SetSelectedWeaponColor(ERGBColor NewColor)
+{
+	const bool bValidColor = NewColor == ERGBColor::Red || NewColor == ERGBColor::Green || NewColor == ERGBColor::Blue;
+
+	if (!ensureMsgf(bValidColor, TEXT("Invalid weapon color"))) {
+		return;
+	}
+
+	if (SelectedWeaponColor == NewColor) {
+		return;
+	}
+
+	SelectedWeaponColor = NewColor;
+	OnWeaponColorChanged.Broadcast(SelectedWeaponColor);
+}
+
 // Called every frame
 void ARGBPlayerCharacter::Tick(float DeltaTime)
 {
@@ -216,6 +304,21 @@ void ARGBPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 
 	if (ensureMsgf(DashAction, TEXT("DashAction is not assigned"))) {
 		EnhancedInput->BindAction(DashAction, ETriggerEvent::Started, this, &ARGBPlayerCharacter::StartDash);
+	}
+
+	if (ensureMsgf(FireAction, TEXT("FireAction is not assigned")))
+	{
+		EnhancedInput->BindAction(FireAction, ETriggerEvent::Started, this, &ARGBPlayerCharacter::Fire);
+	}
+
+	if (ensureMsgf(NextWeaponColorAction, TEXT("NextWeaponColorAction is not assigned.")))
+	{
+		EnhancedInput->BindAction(NextWeaponColorAction, ETriggerEvent::Started, this, &ARGBPlayerCharacter::NextWeaponColor);
+	}
+
+	if (ensureMsgf(PreviousWeaponColorAction, TEXT("PreviousWeaponColorAction is not assigned.")))
+	{
+		EnhancedInput->BindAction(PreviousWeaponColorAction, ETriggerEvent::Started, this, &ARGBPlayerCharacter::PreviousWeaponColor);
 	}
 }
 

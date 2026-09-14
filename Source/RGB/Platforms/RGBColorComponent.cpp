@@ -24,6 +24,10 @@ ERGBColor URGBColorComponent::GetInitialColor() const
 
 bool URGBColorComponent::SetColor(ERGBColor NewColor)
 {
+    if (bColorLocked) {
+        return false;
+    }
+
     switch (NewColor)
     {
     case ERGBColor::Red:
@@ -69,6 +73,7 @@ void URGBColorComponent::AdvanceColor()
 
 void URGBColorComponent::ResetColor()
 {
+    bColorLocked = false;
     StartingColor = InitialColor;
 
     if (bRandomizeInitialColor) {
@@ -77,4 +82,9 @@ void URGBColorComponent::ResetColor()
 		StartingColor = AvailableVColors[RandomIndex];
     }
     SetColor(StartingColor);
+}
+
+void URGBColorComponent::SetColorLocked(bool bLocked)
+{
+    bColorLocked = bLocked;
 }

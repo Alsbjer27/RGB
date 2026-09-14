@@ -13,6 +13,8 @@
 #include "../Platforms/RGBColorPlatform.h"
 #include "../Platforms/RGBColorComponent.h"
 
+#include "../Arena/RGBArenaControl.h"
+
 ARGBGameMode::ARGBGameMode()
 {
 	DefaultPawnClass = ARGBPlayerCharacter::StaticClass();
@@ -58,12 +60,32 @@ bool ARGBGameMode::RestartMechanicsTest(AController* PlayerController)
 		return false;
 	}
 
+	TArray<TWeakObjectPtr<ARGBArenaControl>> Arenas;
+
+	for (TActorIterator<ARGBArenaControl> It(GetWorld()); It; ++It) {
+		ARGBArenaControl* Arena = *It;
+
+		if (IsValid(Arena)) {
+			Arenas.Add(TWeakObjectPtr<ARGBArenaControl>(Arena));
+			Arena->BeginArenaReset();
+		}
+	}
+
 	for (TActorIterator<ARGBColorPlatform> It(GetWorld()); It; ++It)
 	{
 		ARGBColorPlatform* Platform = *It;
 		if (IsValid(Platform)) {
-			Platform->GetColorComponent()->ResetColor();
+			if (URGBColorComponent* Color = Platform->GetColorComponent()) {
+				Color->ResetColor();
+			}
 		}
 	}
-	return false;
+
+	for (const TWeakObjectPtr<ARGBArenaControl>& Arena : Arenas) {
+		if (Arena.IsValid()) {
+			Arena->FinishArenaReset();
+		}
+	}
+
+	return true;
 }

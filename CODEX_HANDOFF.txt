@@ -1,5 +1,5 @@
 RGB - CROSS-PC CODEX HANDOFF
-Last updated: 2026-09-13 (Europe/Stockholm)
+Last updated: 2026-09-14 (Europe/Stockholm)
 
 PURPOSE
 Read this file when continuing RGB in a new Codex conversation or on another PC.
@@ -28,36 +28,45 @@ MOST IMPORTANT: HOW TO WORK WITH THE USER
 - Commit/push only when requested. The user previously authorized a particular
   push; that is not blanket permission to publish every future change.
 - Do not implement all milestones at once. Preserve user tuning choices.
+- Exception on September 14: user explicitly authorized removing temporary
+  diagnostic logs from two gameplay files. Codex did only that cleanup; this
+  is not general authorization to write future gameplay changes.
 
 PROJECT AND GIT SNAPSHOT
-- Unreal Engine 5.7, C++ project, one runtime module named RGB.
-- Current PC: C:\Users\manun\Desktop\Spelprojekt\RGB
-- Other PC: C:\Users\emilr\Desktop\SpelProjekt\RGB
-  Resolve paths against the actual checkout on each PC.
+- UE 5.7, single RGB runtime module. Branch inspected: main.
+- Current PC: C:\Users\emilr\Desktop\SpelProjekt\RGB
+  Other PC: C:\Users\manun\Desktop\Spelprojekt\RGB
 - Repository: https://github.com/Alsbjer27/RGB.git
-- Inspected base commit: 5a1a8df - Movement details, arena camera config started.
-  Previously observed branch: main; branch name was not rechecked this refresh.
-- Pending tracked changes observed before this refresh: Config/DefaultEngine.ini,
-  L_MechanicsTest.umap, RGB_PLATFORMING.txt, RGBArenaCameraZone.cpp,
-  RGBGameMode.h/.cpp, RGBPlayerCharacter.h/.cpp and RGBPlayerController.cpp.
-- Pending new content: Source/RGB/Platforms, Content/RGB/Blueprints/Platforms,
-  Content/RGB/Materials, Content/RGB/Assets, Config/DefaultEditor.ini,
-  BLENDER/PLATFORM.blend, PLATFORM.blend1 and PLATFORM_LARGE.fbx.
-  CODEX_HANDOFF.txt is also modified by this refresh.
-- Include required source AND assets in the user's eventual commit. Actual
-  status can change after Save All; this is not a staged-file inventory.
+- Inspected base: 02ed656dadf10bf1415d869ce9e4de71e7712c8c
+  Commit title: upfate blender files. This predates this session's pending work.
+- Modified tracked files: RGBGameMode.cpp, RGBColorComponent.h/.cpp,
+  RGBColorPlatform.cpp, RGBPlayerCharacter.h/.cpp; L_MechanicsTest.umap,
+  IMC_Player, BP_RGBPlayerCharacter, both platform Blueprints; platform body,
+  cylinder and color materials and their seven texture assets.
+- New untracked files/directories: Source/RGB/Arena, Source/RGB/Combat,
+  Content/RGB/Blueprints/Combat/BP_RGBProjectile.uasset,
+  Content/RGB/Blueprints/Map_Arena/BP_RGBArenaControl.uasset,
+  Content/RGB/Blueprints/Platforms/BP_recovery.uasset,
+  IA_Fire, IA_NextWeaponColor, IA_PreviousWeaponColor under Content/RGB/Input,
+  BLENDER/GUN.blend and GUN.blend1. This handoff is updated too.
+- BP_recovery was a diagnostic Blueprint. No deletion or replacement of the
+  existing platforms was performed. Review its usefulness before eventual commit.
+- Save editor assets before a Git handoff. Include required new source/assets;
+  the above is a working-tree snapshot, not a staged inventory.
 - .gitattributes covers .uasset, .umap, .fbx, .blend, .blend1 and .png with LFS.
-- User will push themselves. Codex did not fetch, stage, commit or push.
-- Generated Binaries, Intermediate, Saved, DerivedDataCache, .vs and .sln
-  should not be committed or transferred as a substitute for rebuilding.
-- User installed Visual Studio Community 2026 alongside 2022 and reports it
-  works. Installer included MSVC v143 14.44 and Windows SDK. Exact active
-  compiler/toolchain was not verified; preserve the working UE 5.7 toolchain.
+- No fetch, stage, commit or push performed. User previously planned own pushes;
+  this request is only an end-of-day handoff refresh.
+- Do not commit Binaries, Intermediate, Saved, DerivedDataCache, .vs or .sln.
+- User reports Visual Studio Community 2026 works alongside 2022. Preserve
+  working UE 5.7 toolchain; exact compiler version not independently verified.
+
 GAME PREMISE AND DEVELOPMENT RULES
 2.5D action-puzzle platformer. Players change platform colors by landing on or
 jumping off platforms. Color-specific weapons eliminate matching enemies.
 Eliminated enemies transfer their color to the platform beneath them. Arenas
-are solved when all participating platforms share any one RGB color. Compare color state, not material references. Completion evaluation is not implemented yet.
+are solved when all explicitly assigned platforms match the arena instance's
+RequiredColor. This supersedes the earlier any-shared-color rule. Compare RGB
+state, not material references. Progress, immediate completion and locking now work.
 
 C++ owns gameplay rules, movement, camera behavior, weapons, platform state,
 arena evaluation, enemy AI and reusable systems. Blueprints supply asset
@@ -82,13 +91,14 @@ MILESTONE ORDER
 8. Cannon and advanced enemy AI.
 9. Progression, additional enemies and levels.
 
-Current focus: milestone 3 platform colors and integration of a modeled platform.
-User reports landing/jump-off colors, optional randomized starts, rerolling on
-manual reset, and the new mesh/material integration work well.
-Next proposed milestone: 4, basic combat with stationary enemies first.
-No combat, enemy AI, cannon or arena completion implementation exists yet.
-L_MechanicsTest remains the permanent mechanics blockout. Full milestone
-acceptance and all regression checks are not documented as complete.
+Current focus: basic combat (milestone 4), after user explicitly chose to implement
+arena completion first. Visible colored projectiles and weapon cycling work.
+Arena completion/progress/locking/reset were implemented ahead of original order
+with user authorization. Do not reimpose the old order or review gate.
+Next: one stationary colored enemy, matching elimination and color transfer.
+No enemy, damage matching, enemy transfer, enemy AI or cannon exists yet.
+L_MechanicsTest remains the permanent test level; broader acceptance is pending.
+
 IMPLEMENTED CLASSES AND ASSETS
 Source/RGB/Player/RGBPlayerCharacter.h/.cpp
   Plane-constrained character; Enhanced Input move/jump/dash bindings;
@@ -171,41 +181,39 @@ Z Velocity During Jump enabled. Do not reset overrides to the 3000 source
 default silently. Runtime dash duration was not confirmed against Blueprint.
 Binary assets were not independently audited during this refresh.
 
-INTENDED INPUT CONFIGURATION
-Both keyboard and gamepad must work; no explicit device-switch mode.
-  Move: A/D, Left/Right arrows, Gamepad Left Thumbstick X-Axis.
-    IA_Move = Axis1D. Negate A/Left; dead zone on stick mapping.
-  Jump: Space, Gamepad Face Button Bottom. IA_Jump = Digital (bool).
-  Dash: Left Shift, Gamepad Right Shoulder. IA_Dash = Digital (bool).
-  Restart: R, Gamepad Special Right. IA_Restart = Digital (bool).
-Actions/mappings were instructed to have empty trigger lists. In particular,
-a Pressed trigger on Jump can end the action too early for variable height.
-Character Blueprint assigns Move/Jump/Dash actions; controller Blueprint
-assigns the mapping context and Restart action. Game mode Blueprint selects
-both configured Blueprint classes. These are expected settings, not a fresh
-binary-asset audit; verify in Unreal if input behavior disagrees.
+CURRENT INPUT CONFIGURATION (LATEST USER CHOICES)
+- Move: A/D, arrows, Gamepad Left Thumbstick X-Axis; Axis1D.
+- Jump: Space / Xbox A (Gamepad Face Button Bottom); Digital.
+- Dash: Left Shift / Xbox X (Gamepad Face Button Left). User corrected a
+  temporary conflict where dash and fire both used Face Button Right.
+- Restart: R / Gamepad Special Left, per latest mapping screenshot.
+- Fire: P / Xbox B (Gamepad Face Button Right), IA_Fire Digital.
+  These replace earlier RT/left-mouse suggestions; do not revert them.
+- Next weapon color: E / RB (Gamepad Right Shoulder), IA_NextWeaponColor.
+- Previous weapon color: Q / LB (Gamepad Left Shoulder), IA_PreviousWeaponColor.
+- Color cycling and firing bind Started: one action per press. No autofire.
+- Actions/mappings instructed to have empty triggers/modifiers except move's
+  negate/dead-zone settings. Held jump requires no Pressed-only action trigger.
+- BP_RGBPlayerCharacter assigns all character actions plus ProjectileClass =
+  BP_RGBProjectile. Controller supplies IMC_Player and restart action.
+- User confirmed assigning mappings and actions; no independent binary audit.
 
 RESET / RESPAWN STATUS
-Implemented previously:
-- ARGBGameMode::RespawnPlayer(AController*).
-- ARGBPlayerController::SetupInputComponent and RestartPlayer.
-- ARGBPlayerCharacter::FellOutOfWorld override.
-- IA_Restart and controller default assignment.
-- Instructions to set map Kill Z = -1000 with world bounds checks enabled.
+- Floor, mid-jump, dash, and falling-off-map respawn previously user-tested.
+- RestartMechanicsTest now: respawn; collect arena controllers and call
+  BeginArenaReset on all; reset each color platform once; call FinishArenaReset
+  on collected valid arenas. Completion checks stay paused during the batch.
+- Success now returns true; old false-on-success bug is fixed.
+- ResetColor unlocks before restoring InitialColor or rerolling if randomness
+  enabled. Reroll is each manual reset, not just each play session.
+- Falling out of world still only respawns, preserving arena/platform state.
+- Keep Player Start clear and on ordinary floor to avoid unintended landing.
+- User confirmed completion -> locked platforms -> manual reset -> independent
+  color changes -> second completion and lock all work.
+- Existing projectiles are not explicitly cleared by this reset; they currently
+  expire after three seconds. Revisit projectile/enemy reset integration when
+  damage is introduced; do not assume old shots are removed on reset.
 
-User reported floor, mid-jump, dash and falling-off-map respawn work.
-Manual restart now calls ARGBGameMode::RestartMechanicsTest:
-- RespawnPlayer first; if successful, iterate ARGBColorPlatform actors once and
-  call their color components' ResetColor. This is not a per-frame search.
-- Random-enabled platforms reroll on EVERY manual restart; fixed-color platforms
-  restore InitialColor. User explicitly requested rerolling within one play session.
-- Falling out of the world still calls RespawnPlayer only, not platform reset.
-- Keep Player Start clear and on ordinary floor; spawning onto a color platform
-  can count as a landing and change its color.
-- Known small source defect: RestartMechanicsTest returns false at its final
-  success path. Controller currently ignores the return value, so observed reset
-  still works. Next session, give user the one-line fix to return true at the
-  function's end (keep failure return false), then rebuild. Do not edit for them.
 MECHANICS MAP AND MEASUREMENTS
 - User added a Text Render sign reading 01 - MOVEMENT and confirmed it is
   readable during play. Editor label in screenshots is 01_Movement.
@@ -289,9 +297,8 @@ PLATFORM COLOR IMPLEMENTATION
   directly, not the next cycle color. Example red weapon kills red enemy on blue
   platform -> red platform. Future cannon elimination transfers enemy color too.
   Shared elimination/transfer handling should avoid duplicate application.
-- Arena goal: all participating platforms the same RGB state, any of the three.
-  No authoritative rules should compare materials. Completion timing/latching
-  and platform registration remain for milestone 5.
+- Arena goal now requires the selected RequiredColor for every assigned platform.
+  Immediate completion, latching and locking are implemented (see below).
 
 MODELED PLATFORM AND MATERIALS
 - User renamed proposed Art folder to Assets.
@@ -336,26 +343,120 @@ MODELED PLATFORM AND MATERIALS
   collision, landing/takeoff color changes, matching glow, unchanged body/cylinders.
   A plain mesh actor is only visual/collision and does not implement color gameplay.
 
+ARENA PROGRESS AND COMPLETION (SEPTEMBER 14)
+- Source/RGB/Arena/RGBArenaControl.h/.cpp, class ARGBArenaControl (NOT Controller).
+  Blueprint: Map_Arena/BP_RGBArenaControl. User assigned eight platforms, target
+  Blue, and their existing ARGBArenaCameraZone through ArenaCameraZone property.
+- RequiredColor is EditAnywhere. AssignedPlatforms and ArenaCameraZone are
+  EditInstanceOnly. Camera zone link is stored only; it does not discover
+  platforms or change camera behavior. Platforms are assigned explicitly once.
+- SceneRoot and ProgressText (UTextRenderComponent) created in C++.
+  Text positioning/appearance editor-tuned. User wants only 'Progress: 37.5%',
+  no color name or platform counts. Current completion text is
+  'Progress: 100.0% - Completed'. Further text polish deferred.
+- Color-change events trigger progress = matching count / assigned count * 100.
+  Eight platforms means 12.5 percentage points each. Empty, missing, destroyed,
+  duplicate assignments or invalid target color show setup error, not success.
+- Completion checks start next tick after BeginPlay so starting colors can
+  initialize. Super::BeginPlay is now present. Timer cleared in EndPlay/reset.
+- At all matched: bCompleted latches true, lock every assigned color component,
+  update text, broadcast FRGBArenaCompletedSignature OnArenaCompleted once.
+  Complete immediately even while standing on last platform. IsCompleted getter.
+- URGBColorComponent has private transient bColorLocked, SetColorLocked(bool),
+  and early return in SetColor when locked. Landing/takeoff cannot change color.
+  ResetColor unlocks; arena reset pauses evaluation until all colors are reset.
+- Reset that happens to produce all required colors immediately completes again.
+- User requirement for future enemies: all enemies belonging to a completed
+  arena despawn. Event exists; enemy membership/despawn listener NOT implemented.
+  Implementation consideration: distinguish completion despawn from combat
+  elimination; transfer semantics for despawning were not discussed explicitly.
+- No cross-arena shared-platform ownership enforcement; avoid sharing assigned
+  platforms between arenas until ownership rules are added.
+
+PLATFORM COMPONENT REFERENCE INCIDENT AND RECOVERY
+- After completion work, all platforms appeared to change together and then
+  opening the map crashed. SetColor logs showed BPGC_ARCH_FOR_CDO_RGBColorPlatform
+  owner instead of individual platform instances. Crash was GetInitialColor from
+  ARGBColorPlatform::OnConstruction reading a missing ColorComponent reference.
+- Both parent/child platform Blueprint component Details were blank; property
+  showed None. Fresh BP_recovery was also affected. Blueprint recompilation and
+  full rebuild did not by themselves repair it. Exact original cause unproven.
+- Diagnostic proved actor still owned a URGBColorComponent with correct owner,
+  while the reflected ColorComponent property was None.
+- Current GetColorComponent accepts cached pointer only if valid and owned by
+  this actor; otherwise finds its own URGBColorComponent and validates ownership.
+- OnConstruction assigns ColorComponent = GetColorComponent, checks references
+  before previewing materials. BeginPlay also recovers, validates, then binds
+  AddUniqueDynamic and applies color. Keep these guards and recovery.
+- User confirmed independent colors and full completion/reset cycle after repair.
+- Temporary COLOR CHANGE / COMPONENT CHECK logs and diagnostic-only local were
+  removed by Codex at user's explicit request. Recovery and useful guards remain.
+- Rebuild checks matter: once the diagnostic was absent because source timestamp
+  was newer than DLL. Inspect actual logs/build output before assuming code ran.
+- If references fail again, diagnose ownership first; don't repeatedly rebuild
+  assets, delete the map, or rename components without evidence. Root cause and
+  final Blueprint-template Details visibility remain unproven despite play success.
+
+PROJECTILES AND WEAPON COLOR SELECTION
+- Source/RGB/Combat/RGBProjectile.h/.cpp, ARGBProjectile.
+  Content/RGB/Blueprints/Combat/BP_RGBProjectile.uasset.
+- Native collision sphere radius 10 cm; subobject name 'CollisionShape' (property
+  CollisionSphere). QueryOnly WorldDynamic, blocks except Camera/Visibility,
+  no overlaps. Static mesh component has no collision or shadow.
+- Blueprint uses basic engine sphere at scale 0.2 (20 cm diameter), user confirmed.
+- ProjectileMovement sweeps, no bounce, gravity 0, rotation follows velocity,
+  initial local ForwardVector rotated by spawn direction. CURRENT source speed
+  and MaxSpeed = 2200 cm/s (initial suggestion 5000 was later tuned by user).
+  Do not revert to 5000; Blueprint runtime speed not freshly audited.
+- BeginPlay ignores owning shooter for projectile movement. OnProjectileStop
+  invokes HandleProjectileStopped -> Destroy immediately; lifespan 3 s if no hit.
+- Player Fire uses last facing +/- X, spawn at actor center + direction * 75 cm.
+  Sweeps radius 10 from center to spawn using WorldDynamic, ignores self; blocked
+  muzzle path cancels shot. Spawn uses DontSpawnIfColliding, Owner/Instigator self.
+  If projectile size changes, update this currently hardcoded sweep too.
+- SelectedWeaponColor private transient Red on new player. Validated setter;
+  next Red->Green->Blue->Red, previous reverse. OnWeaponColorChanged(NewColor)
+  dynamic event and GetSelectedWeaponColor available for future weapon visuals.
+- Fire calls InitializeColor(SelectedWeaponColor) immediately after successful
+  SpawnActor. Projectile stores independent ERGBColor, validates once, ignores
+  repeat initialization, sets material slot 0 using assigned RGB references.
+  GetProjectileColor available for future matching damage. CurrentColor enum is
+  reused from RGBColorComponent.h; projectile does not share a mutable component.
+- Three projectile material references were assigned by user; exact material
+  asset selections not inspected. User confirms shots change color correctly.
+- Color is currently assigned AFTER SpawnActor/BeginPlay. Before adding damage
+  during spawn-time callbacks, ensure color exists before any such hit handling
+  (deferred spawning is a possible next implementation choice).
+- Weapon mesh is not attached; GUN.blend is only early Blender work. User wants
+  held weapon material to change with selection later. Use the existing event
+  plus initial getter when adding visuals; fired shots retain their own color.
+- No enemy, damage matching or platform transfer implemented yet. Projectile
+  impacts currently only destroy the projectile, never recolor platforms.
+
 VERIFICATION AND NEXT SESSION
-- This refresh read source, asset filenames, .gitattributes, git status and
-  git log. Only CODEX_HANDOFF.txt was edited by Codex.
-- User reported successful builds during platform implementation, then "done"
-  after the ColorMaterialIndex build instructions, and successful in-game
-  behavior with the custom Blueprint. Codex did not run a build or PIE.
-  No exact compiler command/log or independent binary-asset audit was captured.
-- First small follow-up: correct RestartMechanicsTest success return as noted.
-- Next proposed gameplay milestone is 4: stationary enemies, colored weapons,
-  matching elimination, and platform color transfer. User has not yet chosen
-  projectile vs trace, fire controls/weapon selection, mismatch feedback, or
-  airborne/no-platform transfer policy. Resolve these incrementally.
-- Do not add double jump, enemy AI or cannon prematurely. Double jump remains
-  deferred until user experiments with level design.
-- Retain L_MechanicsTest; add combat tests there. Remaining broader checks include
-  movement/dash across frame rates, camera boundary/respawn cases and explicit
-  color side/underside/buffered-jump regressions. Do not claim unrun checks passed.
-- Older PROJECT_PLAN/ARCHITECTURE/DECISIONS still contain obsolete status and
-  proposed rules; this handoff records newer accepted choices. Provide suggested
-  document edits later unless separately authorized to modify those files.
+- User repeatedly reported successful Development Editor / Win64 builds after
+  provided changes. Codex did not run a build or PIE; exact build logs/commands
+  were not captured as verification. Read-only source/log inspection performed.
+- User confirmed: percentage math; preferred simple text; independent platform
+  colors after reference recovery; completion lock; reset and second completion;
+  one shot per press left/right; immediate impact despawn; weapon/projectile
+  color cycling. Full multi-device matrix and in-flight recolor test not explicit.
+- Today Codex directly removed diagnostic logs only with explicit authorization;
+  this refresh edits only CODEX_HANDOFF.txt. No commit/push or asset edits by Codex.
+- NEXT: stationary enemy with RGB color, matching projectile elimination and
+  transferring enemy color directly to support platform. Tie enemy membership
+  to arena so completion despawns its enemies. Add repeatable enemy reset.
+- Last unanswered design question: proposed mismatch = projectile disappears,
+  enemy unharmed. User ended session before agreeing; confirm this first.
+- Also resolve airborne/no-platform transfer handling and support query rules
+  as needed. No moving AI or cannon until basic stationary combat works.
+- Preserve L_MechanicsTest. Regression needs still include frame rates, camera
+  boundary/respawn cases, invalid arena setups, side/underside and buffered jumps,
+  already-complete randomized starts, and collision under sustained input.
+- Older PROJECT_PLAN/ARCHITECTURE/DECISIONS remain stale. User explicitly changed
+  completion rule and milestone order; follow this handoff/current source.
+  Offer documentation edits later rather than writing them without authorization.
+
 FUTURE AI DIRECTION
 Enemy knows its color, support platform, arena requirements and reachable
 platforms. It chooses between chasing the player and sabotaging progress.

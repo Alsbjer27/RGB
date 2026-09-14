@@ -31,6 +31,7 @@ public:
     bool SetColor(ERGBColor NewColor);
     void AdvanceColor();
     void ResetColor();
+    void SetColorLocked(bool bLocked);
 
     UPROPERTY(BlueprintAssignable, Category = "RGB|Color")
     FRGBColorChangedSignature OnColorChanged;
@@ -50,4 +51,7 @@ private:
 
     UPROPERTY(Transient, VisibleInstanceOnly, Category = "RGB|Color")
     ERGBColor StartingColor = ERGBColor::Red;
+
+    UPROPERTY(Transient, VisibleInstanceOnly, Category = "RGB|Color")
+    bool bColorLocked = false;
 };
