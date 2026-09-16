@@ -10,6 +10,12 @@
 class UStaticMeshComponent;
 class UMaterialInterface;
 
+UENUM(BlueprintType)
+enum class ERGBPlatformInteractionMode : uint8 {
+	LandingOnly, 
+	LandingAndJumpOff
+};
+
 UCLASS()
 class RGB_API ARGBColorPlatform : public AActor
 {
@@ -21,6 +27,8 @@ public:
 
 	virtual void OnConstruction(const FTransform& Transform) override;
 	URGBColorComponent* GetColorComponent() const;
+
+	void HandlePlayerJumpOff();
 
 protected:
 	// Called when the game starts or when spawned
@@ -43,6 +51,9 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Materials", meta = (ClampMin = "0"))
 	int32 ColorMaterialIndex = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Platform")
+	ERGBPlatformInteractionMode InteractionMode = ERGBPlatformInteractionMode::LandingAndJumpOff;
 
 private:
 	UFUNCTION()

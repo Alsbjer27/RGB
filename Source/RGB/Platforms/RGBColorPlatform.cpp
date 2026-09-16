@@ -62,6 +62,17 @@ URGBColorComponent* ARGBColorPlatform::GetColorComponent() const
 		: nullptr;
 }
 
+void ARGBColorPlatform::HandlePlayerJumpOff()
+{
+	if (InteractionMode != ERGBPlatformInteractionMode::LandingAndJumpOff) {
+		return;
+	}
+
+	if (URGBColorComponent* Color = GetColorComponent()) {
+		Color->AdvanceColor();
+	}
+}
+
 // Called when the game starts or when spawned
 void ARGBColorPlatform::BeginPlay()
 {

@@ -19,6 +19,9 @@ class RGB_API ARGBPlayerController : public APlayerController
 {
 	GENERATED_BODY()
 
+public:
+	ARGBPlayerController();
+
 protected:
 	virtual void BeginPlay() override;
 

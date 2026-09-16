@@ -13,6 +13,14 @@ class UBoxComponent;
 class UCameraComponent;
 class USceneComponent;
 
+UENUM(BlueprintType)
+enum class ERGBArenaViewMode : uint8
+{
+	UseManagerDefault,
+	NormalPerspective,
+	FlatPerspective
+};
+
 UCLASS()
 class RGB_API ARGBArenaCameraZone : public AActor
 {
@@ -21,6 +29,8 @@ class RGB_API ARGBArenaCameraZone : public AActor
 public:	
 	// Sets default values for this actor's properties
 	ARGBArenaCameraZone();
+
+	ERGBArenaViewMode GetArenaViewMode() const { return ArenaViewMode; }
 
 protected:
 	virtual void BeginPlay() override;
@@ -37,6 +47,9 @@ protected:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Camera", meta = (ClampMin = "0.0", Units = "s"))
 	float BlendDuration = 0.35f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Camera")
+	ERGBArenaViewMode ArenaViewMode = ERGBArenaViewMode::UseManagerDefault;
 
 private:
 	void UpdateCameraZone();

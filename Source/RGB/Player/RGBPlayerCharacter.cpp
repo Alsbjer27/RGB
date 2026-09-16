@@ -21,6 +21,8 @@
 #include "CollisionQueryParams.h"
 #include "CollisionShape.h"
 
+#include "../Platforms/RGBJumpPad.h"
+
 
 
 // Sets default values
@@ -98,10 +100,32 @@ void ARGBPlayerCharacter::Landed(const FHitResult& Hit)
 {
 	Super::Landed(Hit);
 
-	ARGBColorPlatform* Platform = Cast<ARGBColorPlatform>(Hit.GetActor());
+	if (ARGBJumpPad* JumpPad = Cast<ARGBJumpPad>(Hit.GetActor())) {
+		const float LaunchSpeed = JumpPad->GetLaunchSpeed();
 
-	if (IsValid(Platform)) {
-		Platform->GetColorComponent()->AdvanceColor();
+		if (!FMath::IsFinite(LaunchSpeed) || LaunchSpeed <= 0.0f) {
+			UE_LOG(LogTemp, Warning, TEXT("%s requires a positive launch speed."), *JumpPad->GetName());
+			return;
+		}
+
+		if (Hit.ImpactNormal.Z < 0.5f) {
+			return;
+		}
+
+		bJumpInputHeld = false;
+		BufferedJumpExpiresAt = -1.0f;
+		JumpSourcePlatform.Reset();
+		StopJumping();
+
+		LaunchCharacter(FVector(0.0f, 0.0f, LaunchSpeed), false, true);
+
+		return;
+	}
+
+	if (ARGBColorPlatform* Platform = Cast<ARGBColorPlatform>(Hit.GetActor())) {
+		if (URGBColorComponent* Color = Platform->GetColorComponent()) {
+			Color->AdvanceColor();
+		}
 	}
 }
 
@@ -110,7 +134,7 @@ void ARGBPlayerCharacter::OnJumped_Implementation()
 	Super::OnJumped_Implementation();
 
 	if (ARGBColorPlatform* Platform = JumpSourcePlatform.Get()) {
-		Platform->GetColorComponent()->AdvanceColor();
+		Platform->HandlePlayerJumpOff();
 	}
 }
 

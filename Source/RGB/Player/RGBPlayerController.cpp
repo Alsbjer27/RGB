@@ -12,6 +12,12 @@
 #include "Engine/World.h"
 #include "../Game/RGBGameMode.h"
 
+#include "../Camera/RGBPlayerCameraManager.h"
+
+ARGBPlayerController::ARGBPlayerController(){
+	PlayerCameraManagerClass = ARGBPlayerCameraManager::StaticClass();
+}
+
 void ARGBPlayerController::BeginPlay()
 {
 	Super::BeginPlay();
