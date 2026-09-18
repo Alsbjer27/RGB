@@ -1,0 +1,9 @@
+{
+  "bones": 22,
+  "weighted_vertices": 970,
+  "loop_max_vertex_error": 0.0,
+  "minimum_floor_z": 3.725290298461914e-09,
+  "animated_fbx_reimport": "passed",
+  "mixamo_upload": "not tested",
+  "note": "Draft FK run. Connected mesh sections at joints may stretch; no IK controls or foot-lock system."
+}
