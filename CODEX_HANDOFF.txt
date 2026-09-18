@@ -1,5 +1,5 @@
 RGB - CROSS-PC CODEX HANDOFF
-Last updated: 2026-09-14 (Europe/Stockholm)
+Last updated: 2026-09-18 (Europe/Stockholm)
 
 PURPOSE
 Read this file when continuing RGB in a new Codex conversation or on another PC.
@@ -37,32 +37,23 @@ PROJECT AND GIT SNAPSHOT
 - Current PC: C:\Users\emilr\Desktop\SpelProjekt\RGB
   Other PC: C:\Users\manun\Desktop\Spelprojekt\RGB
 - Repository: https://github.com/Alsbjer27/RGB.git
-- Inspected base: 02ed656dadf10bf1415d869ce9e4de71e7712c8c
-  Commit title: upfate blender files. This predates this session's pending work.
-- Modified tracked files: RGBGameMode.cpp, RGBColorComponent.h/.cpp,
-  RGBColorPlatform.cpp, RGBPlayerCharacter.h/.cpp; L_MechanicsTest.umap,
-  IMC_Player, BP_RGBPlayerCharacter, both platform Blueprints; platform body,
-  cylinder and color materials and their seven texture assets.
-- New untracked files/directories: Source/RGB/Arena, Source/RGB/Combat,
-  Content/RGB/Blueprints/Combat/BP_RGBProjectile.uasset,
-  Content/RGB/Blueprints/Map_Arena/BP_RGBArenaControl.uasset,
-  Content/RGB/Blueprints/Platforms/BP_recovery.uasset,
-  IA_Fire, IA_NextWeaponColor, IA_PreviousWeaponColor under Content/RGB/Input,
-  BLENDER/GUN.blend and GUN.blend1. This handoff is updated too.
-- BP_recovery was a diagnostic Blueprint. No deletion or replacement of the
-  existing platforms was performed. Review its usefulness before eventual commit.
-- Save editor assets before a Git handoff. Include required new source/assets;
-  the above is a working-tree snapshot, not a staged inventory.
+- Inspected base: fb526e82f2f2fbceaa70f2541d37178a2449463e
+  Commit title: Added new blender file for enemy.
+- Before this handoff refresh, only modified tracked files were:
+  BLENDER/PLAYER_CHARACTER(5.0.0).blend and its .blend1 backup.
+  The earlier September 14 pending-source inventory is obsolete: newer source
+  and assets are already tracked in this checkout. This refresh also changes
+  CODEX_HANDOFF.txt. Preserve the user's Blender changes.
 - .gitattributes covers .uasset, .umap, .fbx, .blend, .blend1 and .png with LFS.
-- No fetch, stage, commit or push performed. User previously planned own pushes;
-  this request is only an end-of-day handoff refresh.
+- Save editor assets before Git handoff. No stage, commit, push or asset edits
+  performed as part of this refresh.
 - Do not commit Binaries, Intermediate, Saved, DerivedDataCache, .vs or .sln.
 - User reports Visual Studio Community 2026 works alongside 2022. Preserve
   working UE 5.7 toolchain; exact compiler version not independently verified.
 
 GAME PREMISE AND DEVELOPMENT RULES
-2.5D action-puzzle platformer. Players change platform colors by landing on or
-jumping off platforms. Color-specific weapons eliminate matching enemies.
+2.5D action-puzzle platformer. Players change platform colors by landing; an optional platform setting also
+changes color on deliberate jump-off. Color-specific weapons eliminate matching enemies.
 Eliminated enemies transfer their color to the platform beneath them. Arenas
 are solved when all explicitly assigned platforms match the arena instance's
 RequiredColor. This supersedes the earlier any-shared-color rule. Compare RGB
@@ -95,7 +86,9 @@ Current focus: basic combat (milestone 4), after user explicitly chose to implem
 arena completion first. Visible colored projectiles and weapon cycling work.
 Arena completion/progress/locking/reset were implemented ahead of original order
 with user authorization. Do not reimpose the old order or review gate.
-Next: one stationary colored enemy, matching elimination and color transfer.
+Recent user-directed work added jump pads, flat-perspective camera transitions
+and selectable platform interaction modes. Verify the latest Details settings
+before resuming the proposed stationary enemy, matching hits and color transfer.
 No enemy, damage matching, enemy transfer, enemy AI or cannon exists yet.
 L_MechanicsTest remains the permanent test level; broader acceptance is pending.
 
@@ -244,7 +237,8 @@ ARENA CAMERA IMPLEMENTATION AND EDITOR SETTINGS
   Checks local player index 0 and overlap with RGB player's capsule.
 - Intended: enter or replacement pawn inside -> blend to this actor's camera;
   exit -> blend to possessed character. SetViewTargetWithBlend uses duration
-  0.35 s, VTBlend_EaseInOut, exponent 2, lock outgoing true.
+  0.35 s. The new camera manager overrides easing: linear by default, or
+  ease-in/out exponent 2 when configured; outgoing view stays locked.
 - EndPlay clears timer; on zone destruction tries to restore possessed pawn
   through tracked controller. Tracking assignments are now present.
 - This version targets one arena zone / one local player. No ownership or
@@ -286,11 +280,14 @@ PLATFORM COLOR IMPLEMENTATION
   Existing cube platforms keep 0; modeled platform uses 1.
 - RGBPlayerCharacter::Landed advances the landed-on color platform once.
   CheckJumpInput captures the grounded CurrentFloor actor in weak JumpSourcePlatform
-  before Super::CheckJumpInput. OnJumped_Implementation advances it on successful
-  jump; temporary reference is cleared afterwards.
-- Agreed interactions: landing and deliberate jump-off each advance once.
-  Walking off, side contact and underside contact do not advance. A buffered
-  landing followed by takeoff can advance twice (two intended events).
+  before Super::CheckJumpInput. OnJumped_Implementation calls the platform's
+  HandlePlayerJumpOff on successful jump; temporary reference is then cleared.
+- InteractionMode is EditAnywhere: ERGBPlatformInteractionMode::LandingOnly
+  or LandingAndJumpOff (default). Set Blueprint defaults or individual actors.
+  Landing advances in both modes; HandlePlayerJumpOff advances only in the
+  latter. Walking off, side/underside contact do not advance. Buffered landing
+  then takeoff can advance twice only in LandingAndJumpOff. Completion locks
+  still apply. Source verified; explicit playtest of both modes is pending.
 - Blueprint assets: Content/RGB/Blueprints/Platforms/BP_RGBColorPlatform.uasset
   and BP_RGBPlatformLarge.uasset. Blueprints configure assets, not rules.
 - Future combat: matching weapon kills enemy; platform beneath takes ENEMY color
@@ -433,36 +430,119 @@ PROJECTILES AND WEAPON COLOR SELECTION
 - No enemy, damage matching or platform transfer implemented yet. Projectile
   impacts currently only destroy the projectile, never recolor platforms.
 
+JUMP PAD
+- Source/RGB/Platforms/RGBJumpPad.h/.cpp: ARGBJumpPad.
+  Content/RGB/Blueprints/Platforms/BP_RGBJumpPad.uasset.
+- PadMesh is a blocking, non-simulated static mesh root; no Tick or overlaps.
+  LaunchSpeed is EditAnywhere, default 2000 cm/s. Optional metadata/clamps
+  were omitted at user's preference; runtime validates finite positive speed.
+- RGBPlayerCharacter::Landed handles a jump pad before ordinary color platforms.
+  Top-facing impact required (normal Z >= 0.5). Clears jump hold, buffered jump
+  and JumpSourcePlatform, calls StopJumping, then LaunchCharacter with XY
+  preserved and Z replaced by LaunchSpeed.
+- User wanted repeatable launch height without holding jump. This uses fixed
+  launch speed under existing gravity, not a target-height property. Ceilings
+  or deliberate dash can still alter the trajectory.
+- Blueprint uses a simple flattened cube with a distinct appearance. Suggested
+  scale was (3,4,0.2); actual saved transform/material not independently audited.
+- User reported successful builds and that the pad does what it should.
+  No independent PIE or exact apex measurements were performed.
+
+FLAT-PERSPECTIVE CAMERA AND DETAILS CONTROLS
+- Source/RGB/Camera/RGBPlayerCameraManager.h/.cpp: ARGBPlayerCameraManager.
+  Blueprint: Content/RGB/Blueprints/Camera/BP_RGBPlayerCameraManager.uasset.
+  RGBPlayerController sets the native manager class; user confirmed the
+  controller Blueprint's Camera Manager Class assignment too.
+- This is a dolly-zoom approximation of orthographic, NOT true orthographic.
+  Keep camera components' Projection Mode set to Perspective.
+- EditAnywhere CameraTestMode: NormalPerspective, FlatArenaOnly (source
+  default), or FlatBothViews. FlatViewDistance defaults to 80000 cm;
+  bUseLinearBlend defaults true. Tune manager Blueprint defaults between runs.
+- Dolly zoom intersects the camera's forward ray with gameplay plane Y=0.
+  Width = 2 * distance * tan(FOV/2). Interpolate distance toward the larger of
+  current distance and FlatViewDistance, then recompute FOV from the preserved
+  width. Move backward along view direction, maintaining plane framing.
+  This changes depth perspective without changing the intended plane width.
+- Manager keeps an unmodified base view to avoid applying flattening twice.
+  Blends flatten amount together with view-target transition; outgoing view
+  is locked. Linear/ease-in-out choice is controlled by the manager.
+- Fixed the effect disappearing at blend completion: the non-pending branch
+  uses ViewTarget.Target, not PendingViewTarget.Target. User said it looked
+  better after this fix.
+- Latest source exposes ArenaViewMode on ARGBArenaCameraZone (EditAnywhere):
+  UseManagerDefault (default), NormalPerspective, FlatPerspective.
+  Select the placed BP_ArenaCameraZone in the level and use Details to choose.
+  NormalPerspective returns that arena to perspective; FlatPerspective forces
+  the approximation. Explicit zone choice overrides manager policy for the
+  arena only; follow camera still follows manager mode.
+- Latest per-zone Details override is present in source, but no explicit
+  subsequent build/PIE confirmation was received. Seamless live mode toggles,
+  rapid blend reversal and complete respawn/boundary matrix remain unverified.
+- User wants basic lighting WITH surface shading. Distant-camera haze was
+  resolved after advice to set ExponentialHeightFog Fog Density to zero;
+  user confirmed that solved it. Preserve lit materials. Disabling directional
+  cast shadows was discussed but final shadow settings were not confirmed.
+
+BUILD MEMORY TROUBLESHOOTING
+- UbaSessionServer repeatedly killed compiler processes at about 45.7/47.4 GB
+  memory use, above a 45 GB threshold. This log is not a physical-RAM inventory.
+- Verified local Saved/UnrealBuildTool/BuildConfiguration.xml contains:
+    <Configuration xmlns="https://www.unrealengine.com/BuildConfiguration">
+      <BuildConfiguration>
+        <MaxParallelActions>2</MaxParallelActions>
+      </BuildConfiguration>
+    </Configuration>
+  File also has a normal XML declaration.
+- Suggested closing Unreal/unused apps during build; lower parallel actions to
+  1 if necessary. No confirmation yet that this resolved the memory kills.
+  No UBA disabling or page-file modifications performed.
+- Saved is ignored/generated: this local configuration will NOT travel in Git.
+  Recreate the setting on the other PC if needed; do not commit Saved.
+
 VERIFICATION AND NEXT SESSION
-- User repeatedly reported successful Development Editor / Win64 builds after
-  provided changes. Codex did not run a build or PIE; exact build logs/commands
-  were not captured as verification. Read-only source/log inspection performed.
-- User confirmed: percentage math; preferred simple text; independent platform
-  colors after reference recovery; completion lock; reset and second completion;
-  one shot per press left/right; immediate impact despawn; weapon/projectile
-  color cycling. Full multi-device matrix and in-flight recolor test not explicit.
-- Today Codex directly removed diagnostic logs only with explicit authorization;
-  this refresh edits only CODEX_HANDOFF.txt. No commit/push or asset edits by Codex.
-- NEXT: stationary enemy with RGB color, matching projectile elimination and
-  transferring enemy color directly to support platform. Tie enemy membership
-  to arena so completion despawns its enemies. Add repeatable enemy reset.
-- Last unanswered design question: proposed mismatch = projectile disappears,
-  enemy unharmed. User ended session before agreeing; confirm this first.
-- Also resolve airborne/no-platform transfer handling and support query rules
-  as needed. No moving AI or cannon until basic stationary combat works.
-- Preserve L_MechanicsTest. Regression needs still include frame rates, camera
-  boundary/respawn cases, invalid arena setups, side/underside and buffered jumps,
-  already-complete randomized starts, and collision under sustained input.
-- Older PROJECT_PLAN/ARCHITECTURE/DECISIONS remain stale. User explicitly changed
-  completion rule and milestone order; follow this handoff/current source.
-  Offer documentation edits later rather than writing them without authorization.
+- User reported successful builds through jump pad and camera implementation.
+  Codex did not run a build or PIE; exact commands/logs were not captured as
+  verification. This refresh used read-only source/Git/config inspection.
+- Earlier user checks passed: independent platform colors, percentage math,
+  completion lock, reset/second completion, firing, impact despawn and cycling.
+  New user reports: jump pad works; corrected camera effect looks better;
+  fog adjustment fixed haze.
+- Pending: explicit build and playtest confirmation for latest platform
+  interaction options and per-arena Details camera override. Test landing-only
+  versus landing-plus-jump-off, completed lock in both, and all three arena view
+  choices against manager defaults. Preserve the user's camera/material tuning.
+- This refresh edits only CODEX_HANDOFF.txt. No gameplay/assets changed or
+  commit/push performed by Codex.
+- Proposed next combat step remains a stationary enemy with RGB color,
+  matching projectile elimination and enemy-color transfer to support platform.
+  Multiple-hit durability must now accommodate three planned enemy types.
+  Tie membership to arena completion despawn and repeatable reset.
+- Unanswered proposal: mismatched projectile disappears, enemy unharmed.
+  Confirm matching/damage rules before implementation; no enemy code yet.
+- Resolve airborne/no-platform transfer and support queries as needed.
+- Keep L_MechanicsTest. Broader regression still includes frame rates, camera
+  boundaries/respawn, invalid arenas, buffered jumps, randomized complete starts
+  and collision under sustained input. Full multi-device tests remain pending.
+- Older PROJECT_PLAN/ARCHITECTURE/DECISIONS are not fully synchronized.
+  Follow explicit user decisions and current source; ask before editing those
+  documents under the user's personal-edit workflow.
 
 FUTURE AI DIRECTION
-Enemy knows its color, support platform, arena requirements and reachable
-platforms. It chooses between chasing the player and sabotaging progress.
-Later it reasons about cannon countdown, arrival time and line of fire, and
-intentionally accepts elimination when its color transfer harms the puzzle.
-Do not implement future AI or double jump during this movement/test-level work.
+- User specifies THREE enemy types with different movement speeds and
+  durability. Exact names, health/hit counts and speed values are undecided.
+- Enemies must consider how many of each type remain in the LEVEL and adapt
+  behavior to the composition. Do not silently narrow this to arena-only counts.
+- Enemy awareness includes own color, support platform, arena requirements and
+  reachable platforms; intended decisions include chasing versus sabotage.
+- Later: reason about cannon countdown, arrival time and line of fire, accepting
+  elimination deliberately when enemy-color transfer harms puzzle progress.
+- All enemies belonging to an arena must despawn when that arena completes.
+- Relation between enemy type and RGB color remains undecided. Suggested role
+  examples or separating type/color were discussion, not finalized design.
+- Discussed academic fit: multi-agent decision-making with FSM/behavior trees
+  and navigation/planning; utility scoring was a possible implementation.
+  No specific AI framework, coordination protocol or machine learning chosen.
+- Enemy AI, damage matching and enemy-to-platform transfer are still future work.
 
 LESSONS FROM THIS SESSION
 - Close Unreal, build Development Editor / Win64, then reopen for C++ changes,
