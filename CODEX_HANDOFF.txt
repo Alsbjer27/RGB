@@ -1,5 +1,141 @@
 RGB - CROSS-PC CODEX HANDOFF
-Last updated: 2026-09-18 (Europe/Stockholm)
+Last updated: 2026-09-19 (Europe/Stockholm)
+
+CURRENT HANDOFF - SEPTEMBER 19 (SUPERSEDES OLDER STATUS BELOW)
+User is switching PCs MID-IMPLEMENTATION. Do not assume turn code is complete.
+This section is the current resume point; older sections retain system context.
+
+CHECKOUT AND SAVE STATUS
+- Current PC: C:\Users\manun\Desktop\Spelprojekt\RGB.
+  Other PC: C:\Users\emilr\Desktop\SpelProjekt\RGB.
+- Inspected base: 4137a33 - Merge remote.
+- Earlier Blender modify/delete conflict was resolved at user's request by
+  keeping this PC's PLAYER_CHARACTER(5.0.0).blend and .blend1 copies.
+- Disk status before this refresh: modified BP_RGBPlayerCharacter.uasset,
+  L_MapLayout.umap and RGBPlayerCharacter.cpp. Preserve these user changes.
+- New/untracked: Source/RGB/AI/, Content/RGB/Blueprints/Enemies/,
+  BLENDER/Animations/HeavyTurn_InPlace.fbx,
+  BLENDER/Robot_Rig_Output/HeavyTurnFull.blend and HeavyTurn_InPlace.blend.
+- IMPORTANT: HeavyTurn_InPlace and HeavyAttackAnim appeared in Unreal screenshots,
+  but no matching .uasset files were found under Content this refresh. Their
+  saved paths/status are unverified. Use Unreal Save All before switching PCs.
+  Unsaved Visual Studio buffers and Unreal assets do not travel through Git.
+- This refresh edits only this handoff. No build, stage, commit or push performed.
+
+LATEST USER DECISIONS AND VERIFICATION
+- User says previous platform interaction/camera playtesting is done and happy;
+  this supersedes older pending-mode checks below. No independent PIE performed.
+- User explicitly moved to enemy movement/animations before matching damage.
+- Three types: slow durable heavy patrols connected walking surfaces without
+  jumping; weak fast runner jumps between platforms; weak teleporter teleports.
+  Exact speed/health balance and runner/teleporter implementations remain future.
+- Heavy approaches a nearby player (not retreat), respects walls/edges, stops
+  near player and resumes patrol outside detection range.
+- Keep Blueprints minimal: asset assignment/tuning only; C++ owns gameplay and
+  animation control. User continues entering gameplay code personally.
+- Attacks are explicitly ANIMATION ONLY for now: no damage or player respawn.
+
+HEAVY ENEMY WORKING FOUNDATION
+- Source/RGB/AI/RGBEnemyCharacter.h/.cpp, ARGBEnemyCharacter : ACharacter.
+  Blueprint: Content/RGB/Blueprints/Enemies/BP_RGBEnemyHeavy.uasset.
+- Robot_Rigged_BindPose skeletal mesh/skeleton/physics asset under
+  Content/RGB/Characters/HEAVY/Meshes. HeavyWalkCycle is in-place under Animations.
+- Capsule native radius42/halfheight96. User was guided to Blueprint halfheight110,
+  Mesh relative Z=-110. Accepted uniform heavy scale is 1.6, NOT proposed1.8.
+  Mesh import orientation correction is relative Z rotation +90 degrees.
+  Keep actor yaw0/180 for facing; preserve that separate mesh offset.
+- Mesh uses Use Animation Asset, looping/playing HeavyWalkCycle. No Anim Blueprint.
+- X/Z movement, Y=0 plane; capsule owns collision, mesh collision/simulation off.
+  bRunPhysicsWithNoController=true; no enemy AI controller yet.
+  Defaults: speed200, acceleration/braking2000, gravity3, flat floor checks true,
+  bCanWalkOffLedges=false. Actor Tick enabled for movement and path checks.
+- CanWalkInDirection: sphere sweep ahead at body height on Pawn channel, downward
+  line trace ahead for walkable ground, self ignored. Accounts for scaled capsule
+  dimensions and one frame of speed. EdgeLookAhead30, MaxPatrolDrop30.
+- Patrol initially did not move: Tick was disabled, then DLL was stale. User
+  confirmed movement after corrected code/build/reopen.
+- Reversing at mesh join was a REAL gap near rounded platform corner: trace Hit=No.
+  Huge MaxPatrolDrop did not help. User overlapped connecting floor slightly and
+  confirmed crossing works. Keep MaxPatrolDrop30. Wall UE_LOG remains in source.
+- Detection timer0.1s cleared EndPlay; local player0, weak target; range800,
+  lose-interest range1000, feet-height tolerance60, stop gap40 beyond capsule radii.
+  Visibility line trace ignores enemy/player. This is local sensing, NOT full
+  connected-surface route planning. Can notice across gap but stops at edge.
+- Fixed DifferenceX to PlayerX - EnemyX and facing to use updated direction.
+  User confirmed approach/stop now works. Earlier world-position-only calculation
+  caused wrong facing and failure to stop; do not reintroduce it.
+- Walk still plays while stationary. Idle/speed-matched animation remains pending.
+- No enemy health, RGB state, damage, transfer, arena membership/despawn/reset yet.
+  Existing arena reset does not reset/recreate these enemies.
+
+TURN ASSET PREPARATION (COMPLETED)
+- Original HeavyTurn has about90deg heading change on hips, not Unreal root.
+  Blender hips have quaternion curves; do not flatten a single component.
+- User explicitly authorized Codex to edit supplied Blender file as an exception.
+  Original BLENDER/Robot_Rig_Output/HeavyTurnFull.blend remains unchanged.
+  Created same-directory HeavyTurn_InPlace.blend with copied active action named
+  HeavyTurn_InPlace. Blender executable used: Blender Foundation/Blender 5.2.
+- Rig Robot_Rig has parentless mixamorig:Hips in Blender; action originally
+  mixamo.com range1-87, scene1-90. Baked hip quaternion correction frames1-90,
+  removing world-Z heading relative to frame1, preserving hip translation and
+  all other animation channels. Heading originally about-90deg.
+- Verified all90 frames: max heading error0.000018deg, hip translation error0.
+  Rendered/inspected start, middle, end. User confirmed in-place result in Blender.
+- User exported BLENDER/Animations/HeavyTurn_InPlace.fbx and confirmed Unreal
+  import/playback works on existing robot skeleton. Asset HeavyTurn_InPlace
+  had unsaved marker in screenshot; ensure Save All as noted above.
+- Planned runtime: stop movement, play once while rotating actor -180deg over
+  clip duration, set final canonical yaw0/180, resume looping walk. Mesh+90 offset
+  stays untouched. Active turn cannot restart when detection changes target.
+  Uniform rotation is first pass; foot timing/blending still requires playtest.
+
+EXACT INCOMPLETE CODE RESUME POINT
+- User explicitly says code is unfinished. Read fresh disk after their Save All.
+- Header NOW has class UAnimSequence, WalkAnimation and TurnAnimation using
+  EditAnywhere (preserve user's choice), declarations StartTurn(float),
+  UpdateTurn(float), ResumeWalkAnimation, plus bTurning, TurnElapsed,
+  TurnDuration, TurnStartYaw.
+- CPP NOW has all three helper definitions. StartTurn stops/consumes movement,
+  captures yaw and updates direction; missing/zero-length clip snaps facing.
+  Otherwise PlayAnimation(nonloop), single-node SetPlaying(false), SetPosition0.
+  UpdateTurn advances elapsed time, sets yaw=TurnStartYaw-180*Alpha and clip
+  position manually with notifies disabled, then resumes walk at completion.
+  ResumeWalkAnimation plays the assigned WalkAnimation looping.
+- BUT Tick STILL uses the old instant-facing implementation, never calls
+  StartTurn/UpdateTurn and never checks bTurning. BeginPlay only starts detection
+  timer. Helper presence does NOT mean runtime turn integration is finished.
+- NEXT: verify Animation/AnimSequence.h and Animation/AnimSingleNodeInstance.h
+  includes; update BeginPlay after Super to initialize direction from forward X,
+  set canonical yaw0/180, ResumeWalkAnimation, retain detection timer.
+- Replace Tick with turn-aware version: bTurning first -> stop grounded motion,
+  UpdateTurn(dt), return. Then disabled/airborne checks. Target branch computes
+  dx=PlayerX-EnemyX; if abs(dx)>5 and desired direction differs, StartTurn and
+  return; otherwise existing stop separation and safe-path movement. Patrol
+  unsafe forward checks opposite first; only starts turn if opposite is safe,
+  preventing endless turns when trapped. Remove instant facing paths.
+- Do not duplicate already-entered helpers/properties. User must finish entries,
+  build Development Editor Win64 with Unreal closed, reopen and assign
+  WalkAnimation=HeavyWalkCycle, TurnAnimation=HeavyTurn_InPlace in heavy defaults.
+  Test edge reversal and player behind. No successful turn build/playtest yet.
+
+ATTACK NEXT (REQUESTED, NOT IMPLEMENTED)
+- Imported asset HeavyAttackAnim, user confirms in-place. Saved asset not located.
+- Explicit user scope: play animation ONLY. No damage, hit response or respawn.
+- Intended next: near player, face them, stop, play attack once then cooldown;
+  turns and attacks mutually exclusive; no per-tick restart. Finish/verify turn
+  first, then give attack additions. No attack code has been supplied or entered.
+- Range/cooldown/impact timing not tuned; future damage rules remain undecided.
+
+SWITCH-PC CHECKLIST FOR THIS SESSION
+- Save All in Visual Studio AND Unreal, including imported animations.
+- Include enemy source, Blueprint, animation assets, FBX/blend and this handoff
+  in Git/LFS. User handles commit/push. Incomplete code may not yet build.
+- Current enemy trials are in L_MapLayout. Keep L_MechanicsTest permanent.
+- No independent build/PIE this refresh; reported working patrol/detection and
+  asset previews are user observations, not verification of unfinished turns.
+- Older statements below saying no enemy exists or stationary enemy is next are
+  superseded by this section; advanced AI/combat/transfer still remain future.
+
 
 PURPOSE
 Read this file when continuing RGB in a new Codex conversation or on another PC.

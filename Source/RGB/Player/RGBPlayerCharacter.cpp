@@ -55,7 +55,7 @@ ARGBPlayerCharacter::ARGBPlayerCharacter(const FObjectInitializer& ObjectInitial
 	Movement->MaxAcceleration = 10000.0f;
 	Movement->BrakingDecelerationWalking = 10000.0f;
 
-	Movement->JumpZVelocity = 3000.0f;
+	Movement->JumpZVelocity = 4000.0f;
 	Movement->GravityScale = 3.0f;
 	Movement->AirControl = 0.55f;
 
