@@ -1,5 +1,79 @@
 RGB - CROSS-PC CODEX HANDOFF
-Last updated: 2026-09-19 (Europe/Stockholm)
+Last updated: 2026-09-20 (Europe/Stockholm)
+
+CURRENT HANDOFF - SEPTEMBER 20 (SUPERSEDES SEPTEMBER 19 RESUME DETAILS)
+
+CURRENT GIT/MERGE STATE
+- Current checkout: C:\Users\manun\Desktop\Spelprojekt\RGB, branch main.
+- Local HEAD before the pending merge commit: 4907883, "Player cahracter
+  imported with animation". Remote commit being merged: 7d1babf, "Heavy Enemy
+  Movement Implemented with Anim". Both commits diverged from 1efc0e7.
+- `git pull` could not merge two binary Unreal files automatically:
+  Content/RGB/Maps/L_MapLayout.umap and L_MapLayout_BuiltData.uasset.
+- Decision: retain the incoming/other-PC versions of BOTH files because that
+  map contains the completed heavy-enemy setup. Player mesh, animation, texture
+  and material are separate Content assets and remain preserved.
+- The user ran checkout --theirs and git add for both files. Inspection shows
+  no remaining unmerged paths and both map files are staged as modified.
+- NEXT EXACT ACTION (user requested this handoff update before doing it):
+    git commit -m "Merge heavy enemy and player work"
+  Do not assume it succeeded until the user reports the result. Do not push
+  until the commit and checkout are verified. Unreal should remain closed while
+  resolving/committing the binary map pair.
+- Codex observed sandbox-only Git LFS temp access errors while inspecting status;
+  the user's own terminal was able to run Git. This is not evidence that the
+  user's LFS installation is broken.
+
+PLAYER CHARACTER EXPORT/IMPORT AND MATERIAL WORK
+- Despite older Scout folder/asset naming, the newly imported slim cannon robot
+  is the PLAYER in the current work. The user explicitly corrected the earlier
+  temporary Soldier description.
+- Blender source:
+  BLENDER/Scout_Rig_Output/Cannon_Run_Long_Stride/Scout_Run_Cannon_Right.blend
+  Scene animation is frames 1-25 at 36 FPS; active action was
+  Scout_Run_Cannon_Right_Long_Stride. Mesh Scout_Body is skinned to Scout_Rig.
+- Complete export created:
+  BLENDER/Scout_Rig_Output/Cannon_Run_Long_Stride/
+  Scout_Run_Cannon_Right_Complete.fbx. Blender round-trip validation showed the
+  mesh, armature, animation and two material slots. Unreal Interchange reported
+  a misleading 12.50 source frame rate; Custom Bone Animation Sample Rate 36
+  was recommended during import.
+- Imported Unreal assets are under Content/RGB/Characters/PLAYER:
+  Meshes/Scout_Run_Cannon_Right_Complete skeletal mesh,
+  Meshes/Scout_Run_Cannon_Right_Complete_Anim animation sequence,
+  Meshes/Scout_Run_Cannon_Right_Complete_Skeleton skeleton,
+  plus imported Body and Details_Emissive material instances.
+- Blender materials were Body (simple gold/brown Principled material) and
+  Details_Emissive (UV/Mapping/Voronoi procedural color into Base Color, with a
+  fixed emissive color). FBX did not reproduce the procedural Voronoi appearance;
+  Unreal showed a flat yellow/gold result. That is expected FBX behavior.
+- User baked the Blender procedural appearance into one shared 2048x2048 image
+  named T_Player_Details_color. The same unconnected, active Image Texture node
+  was placed in BOTH Body and Details_Emissive materials before baking. Cycles
+  bake settings: Diffuse, Color only, Direct off, Indirect off, Selected to
+  Active off, Target Image Textures, Clear Image on, margin 8 px.
+- Saved source PNG:
+  BLENDER/Scout_Rig_Output/Cannon_Run_Long_Stride/T_Player_Details_color.png.
+  It was imported to Content/RGB/Characters/PLAYER/Materials as
+  T_Player_Details_color.uasset.
+- The imported Details_Emissive asset is a Material Instance whose parent is
+  Unreal's shared FBXLegacyPhongSurfaceMaterial. Do NOT edit that shared parent.
+- User created Content/RGB/Characters/PLAYER/Materials/M_Player_Details.uasset.
+  Its texture sample RGB is connected to Base Color. The next editor step was
+  to connect the same RGB output to Emissive Color, Apply and Save, then assign
+  M_Player_Details to the skeletal mesh's Details_Emissive material slot and
+  visually compare it with Blender. This visual assignment/check is not yet
+  confirmed complete.
+- No gameplay code was changed for this player import/material workflow.
+
+HEAVY ENEMY STATUS UPDATE
+- Newer commits supersede the September 19 statement that turn integration was
+  unfinished. Current RGBEnemyCharacter source uses an Animation Blueprint plus
+  TurnMontage and AttackMontage. Turn rotates the actor during the montage and
+  finishes on canonical yaw. Attack is animation-only with cooldown; no damage.
+- User previously confirmed the heavy patrol/player-approach behavior and turn
+  animation worked. Fresh build/PIE verification after completing this merge is
+  still required before relying on the combined checkout.
 
 CURRENT HANDOFF - SEPTEMBER 19 (SUPERSEDES OLDER STATUS BELOW)
 User is switching PCs MID-IMPLEMENTATION. Do not assume turn code is complete.
