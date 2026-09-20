@@ -1,0 +1,8 @@
+{
+  "blender": "5.2.2",
+  "bones": 22,
+  "weighted_vertices": 1473,
+  "rigged_fbx_reimport": "passed",
+  "mesh_only_fbx_reimport": "passed",
+  "mixamo_acceptance": "not tested"
+}

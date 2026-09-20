@@ -14,9 +14,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "TimerManager.h"
 
-#include "Animation/AnimSequence.h"
-#include "Animation/AnimSingleNodeInstance.h"
-
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
 
 // Sets default values
 ARGBEnemyCharacter::ARGBEnemyCharacter()
@@ -50,8 +49,6 @@ ARGBEnemyCharacter::ARGBEnemyCharacter()
 	
 	Movement->bUseFlatBaseForFloorChecks = true;
 	Movement->bCanWalkOffLedges = false;
-
-
 }
 
 void ARGBEnemyCharacter::Tick(float DeltaTime)
@@ -59,6 +56,28 @@ void ARGBEnemyCharacter::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 	UCharacterMovementComponent* Movement = GetCharacterMovement();
+
+	if (bAttacking) {
+		ConsumeMovementInputVector();
+
+		if (Movement->IsMovingOnGround()) {
+			Movement->StopMovementImmediately();
+		}
+
+		UpdateAttack();
+		return;
+	}
+
+	if (bTurning) {
+		ConsumeMovementInputVector();
+
+		if (Movement->IsMovingOnGround()) {
+			Movement->StopMovementImmediately();
+		}
+
+		UpdateTurn(DeltaTime);
+		return;
+	}
 
 	if (!bPatrolEnabled) {
 		if (Movement->IsMovingOnGround()) {
@@ -72,17 +91,29 @@ void ARGBEnemyCharacter::Tick(float DeltaTime)
 	}
 
 	if (ACharacter* Player = TargetPlayer.Get()) {
-		const float DifferenceX = Player->GetActorLocation().X - GetActorLocation().X;
+		const float DifferenceX =
+			Player->GetActorLocation().X - GetActorLocation().X;
 
-		if (!FMath::IsNearlyZero(DifferenceX)) {
-			PatrolDirection = DifferenceX > 0.0f ? 1.0f : -1.0f;
+		if (FMath::Abs(DifferenceX) > 5.0f) {
+			const float DesiredDirection = DifferenceX > 0.0f ? 1.0f : -1.0f;
+
+			if (DesiredDirection != PatrolDirection) {
+				StartTurn(DesiredDirection);
+				return;
+			}
 		}
 
-		SetActorRotation(FRotator(0.0f, PatrolDirection > 0.0f ? 0.0f : 180.0f, 0.0f));
-
 		const float RequiredSeparation = GetCapsuleComponent()->GetScaledCapsuleRadius() + Player->GetCapsuleComponent()->GetScaledCapsuleRadius() + FMath::Max(StopDistanceFromPlayer, 0.0f);
-		
-		if (FMath::Abs(DifferenceX) <= RequiredSeparation || !CanWalkInDirection(PatrolDirection, DeltaTime)) {
+
+		if (FMath::Abs(DifferenceX) <= RequiredSeparation) {
+			Movement->StopMovementImmediately();
+			ConsumeMovementInputVector();
+
+			StartAttack();
+			return;
+		}
+
+		if (!CanWalkInDirection(PatrolDirection, DeltaTime)) {
 			Movement->StopMovementImmediately();
 			return;
 		}
@@ -93,15 +124,14 @@ void ARGBEnemyCharacter::Tick(float DeltaTime)
 
 	if (!CanWalkInDirection(PatrolDirection, DeltaTime)) {
 		Movement->StopMovementImmediately();
-		PatrolDirection *= -1.0f;
 
-		if (!CanWalkInDirection(PatrolDirection, DeltaTime)) {
-			return;
+		const float OppositeDirection = -PatrolDirection;
+
+		if (CanWalkInDirection(OppositeDirection, DeltaTime)) {
+			StartTurn(OppositeDirection);
 		}
+		return;
 	}
-
-	SetActorRotation(FRotator(0.0f, PatrolDirection > 0.0f ? 0.0f : 180.0f, 0.0f));
-
 	AddMovementInput(FVector::ForwardVector, PatrolDirection);
 }
 
@@ -112,7 +142,6 @@ void ARGBEnemyCharacter::BeginPlay()
 	PatrolDirection = GetActorForwardVector().X >= 0.0f ? 1.0f : -1.0f;
 
 	SetActorRotation(FRotator(0.0f, PatrolDirection > 0.0f ? 0.0f : 180.0f, 0.0f));
-	ResumeWalkAnimation();
 
 	GetWorldTimerManager().SetTimer(DetectionTimer, this, &ARGBEnemyCharacter::UpdatePlayerDetection, 0.1f, true);
 }
@@ -207,7 +236,7 @@ void ARGBEnemyCharacter::UpdatePlayerDetection()
 
 void ARGBEnemyCharacter::StartTurn(float NewDirection)
 {
-	if (bTurning || NewDirection == PatrolDirection) {
+	if (bTurning || bAttacking ||NewDirection == PatrolDirection) {
 		return;
 	}
 
@@ -217,45 +246,91 @@ void ARGBEnemyCharacter::StartTurn(float NewDirection)
 	TurnStartYaw = GetActorRotation().Yaw;
 	PatrolDirection = NewDirection;
 
-	if (!TurnAnimation || TurnAnimation->GetPlayLength() <= SMALL_NUMBER) {
-		SetActorRotation(FRotator(0.0f, PatrolDirection > 0.0f ? 0.0f : 180.0f, 0.0f));
+	UAnimInstance* Animation = GetMesh()->GetAnimInstance();
+
+	if (!Animation || !TurnMontage
+		|| TurnMontage->GetPlayLength() <= SMALL_NUMBER) {
+		UE_LOG(LogTemp, Warning,
+			TEXT("%s: Turn requires an Animation Blueprint and TurnMontage."),
+			*GetName());
+
+		SetActorRotation(FRotator(
+			0.0f, PatrolDirection > 0.0f ? 0.0f : 180.0f, 0.0f));
 		return;
 	}
 
-	bTurning = true;
-	TurnElapsed = 0.0f;
-	TurnDuration = TurnAnimation->GetPlayLength();
+	if (Animation->Montage_Play(TurnMontage.Get(), 1.0f) <= 0.0f) {
+		UE_LOG(LogTemp, Warning,
+			TEXT("%s: Could not play TurnMontage."),
+			*GetName());
 
-	GetMesh()->PlayAnimation(TurnAnimation.Get(), false);
-
-	if (UAnimSingleNodeInstance* Animation = GetMesh()->GetSingleNodeInstance()){
-		Animation->SetPlaying(false);
-		Animation->SetPosition(0.0f, false);
+		SetActorRotation(FRotator(
+			0.0f, PatrolDirection > 0.0f ? 0.0f : 180.0f, 0.0f));
+		return;
 	}
+
+	TurnDuration = TurnMontage->GetPlayLength();
+	bTurning = true;
 }
 
 void ARGBEnemyCharacter::UpdateTurn(float DeltaTime)
 {
-	TurnElapsed = FMath::Min(TurnElapsed + DeltaTime, TurnDuration);
-	const float Alpha = TurnElapsed / TurnDuration;
+	UAnimInstance* Animation = GetMesh()->GetAnimInstance();
 
-	SetActorRotation(FRotator(0.0f, TurnStartYaw - 180.0f * Alpha, 0.0f));
-
-	if (UAnimSingleNodeInstance* Animation = GetMesh()->GetSingleNodeInstance()) {
-		Animation->SetPosition(TurnElapsed, false);
-	}
-
-	if (TurnElapsed >= TurnDuration) {
+	if (!Animation || !TurnMontage
+		|| !Animation->Montage_IsActive(TurnMontage.Get())) {
 		bTurning = false;
 
-		SetActorRotation(FRotator(0.0f, PatrolDirection > 0.0f ? 0.0f : 180.0f, 0.0f));
-		ResumeWalkAnimation();
+		SetActorRotation(FRotator(
+			0.0f, PatrolDirection > 0.0f ? 0.0f : 180.0f, 0.0f));
+		return;
 	}
+
+	const float Position =
+		Animation->Montage_GetPosition(TurnMontage.Get());
+
+	const float Alpha = FMath::Clamp(
+		Position / FMath::Max(TurnDuration, SMALL_NUMBER),
+		0.0f, 1.0f);
+
+	SetActorRotation(FRotator(
+		0.0f, TurnStartYaw - 180.0f * Alpha, 0.0f));
 }
 
-void ARGBEnemyCharacter::ResumeWalkAnimation()
+void ARGBEnemyCharacter::StartAttack()
 {
-	if (WalkAnimation) {
-		GetMesh()->PlayAnimation(WalkAnimation.Get(), true);
+	if (bAttacking || bTurning || GetWorld()->GetTimeSeconds() < NextAttackAllowedTime) {
+		return;
 	}
+
+	UAnimInstance* Animation = GetMesh()->GetAnimInstance();
+
+	if (!Animation || !AttackMontage) {
+		return;
+	}
+
+	GetCharacterMovement()->StopMovementImmediately();
+	ConsumeMovementInputVector();
+
+	const float SafePlayRate = FMath::Max(AttackPlayRate, 0.01f);
+
+	if (Animation->Montage_Play(AttackMontage.Get(), SafePlayRate) <= 0.0f) {
+		NextAttackAllowedTime = GetWorld()->GetTimeSeconds() + 1.0;
+		return;
+	}
+	bAttacking = true;
 }
+
+void ARGBEnemyCharacter::UpdateAttack()
+{
+	UAnimInstance* Animation = GetMesh()->GetAnimInstance();
+
+	if (Animation && AttackMontage && Animation->Montage_IsActive(AttackMontage.Get())) {
+		return;
+	}
+
+	bAttacking = false;
+
+	NextAttackAllowedTime = GetWorld()->GetTimeSeconds() + FMath::Max(AttackCooldown, 0.0f);
+}
+

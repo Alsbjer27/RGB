@@ -6,7 +6,7 @@
 #include "GameFramework/Character.h"
 #include "RGBEnemyCharacter.generated.h"
 
-class UAnimSequence;
+class UAnimMontage;
 
 UCLASS()
 class RGB_API ARGBEnemyCharacter : public ACharacter
@@ -45,10 +45,16 @@ protected:
 	float StopDistanceFromPlayer = 40.0f;
 
 	UPROPERTY(EditAnywhere, Category = "RGB|Animation")
-	TObjectPtr<UAnimSequence> WalkAnimation;
+	TObjectPtr<UAnimMontage> TurnMontage;
 
 	UPROPERTY(EditAnywhere, Category = "RGB|Animation")
-	TObjectPtr<UAnimSequence> TurnAnimation;
+	TObjectPtr<UAnimMontage> AttackMontage;
+
+	UPROPERTY(EditAnywhere, Category = "RGB|Attack")
+	float AttackCooldown = 1.0f;
+
+	UPROPERTY(EditAnywhere, Category = "RGB|Attack")
+	float AttackPlayRate = 1.25f;
 
 private:
 	bool CanWalkInDirection(float Direction, float DeltaTime) const;
@@ -59,12 +65,16 @@ private:
 
 	void StartTurn(float NewDirection);
 	void UpdateTurn(float DeltaTime);
-	void ResumeWalkAnimation();
 
 	bool bTurning = false;
-	float TurnElapsed = 0.0f;
 	float TurnDuration = 0.0f;
 	float TurnStartYaw = 0.0f;
+
+	void StartAttack();
+	void UpdateAttack();
+
+	bool bAttacking = false;
+	double NextAttackAllowedTime = 0.0;
 
 	UPROPERTY(Transient)
 	TWeakObjectPtr<ACharacter> TargetPlayer;
