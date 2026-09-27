@@ -8,6 +8,9 @@
 #include "../Camera/RGBArenaCameraZone.h"
 #include "../Platforms/RGBColorPlatform.h"
 
+#include "../AI/RGBEnemyCharacter.h"
+#include "Engine/World.h"
+
 // Sets default values
 ARGBArenaControl::ARGBArenaControl()
 {
@@ -37,6 +40,8 @@ void ARGBArenaControl::BeginArenaReset()
 	MatchingPlatformCount = 0;
 	CompletionPercentage = 0.0f;
 
+	OnArenaProgressChanged.Broadcast(0.0f);
+
 	for (ARGBColorPlatform* Platform : AssignedPlatforms) {
 		if (IsValid(Platform)) {
 			if (URGBColorComponent* Color = Platform->GetColorComponent()) {
@@ -44,10 +49,24 @@ void ARGBArenaControl::BeginArenaReset()
 			}
 		}
 	}
+
+	for (ARGBEnemyCharacter* Enemy : AssignedEnemies) {
+		if (IsValid(Enemy)) {
+			Enemy->DespawnForArenaCompletion();
+		}
+	}
+
+	AssignedEnemies.Reset();
+	bEnemiesNeedRespawn = true;
 }
 
 void ARGBArenaControl::FinishArenaReset()
 {
+	if (bEnemiesNeedRespawn) {
+		RespawnRecordedEnemy();
+		bEnemiesNeedRespawn = false;
+	}
+
 	bResetInProgress = false;
 	UpdateProgress();
 }
@@ -68,12 +87,27 @@ void ARGBArenaControl::BeginPlay()
 		Platform->OnDestroyed.AddUniqueDynamic(this, &ARGBArenaControl::HandlePlatformDestroyed);
 	}
 
+	for (ARGBEnemyCharacter* Enemy : AssignedEnemies) {
+		RecordEnemySpawn(Enemy);
+	}
+
 	InitialEvaluationTimer = GetWorldTimerManager().SetTimerForNextTick(this, &ARGBArenaControl::FinishArenaReset);
+
+	if (UWorld* World = GetWorld()) {
+		ActorSpawnedHandle = World->AddOnActorSpawnedHandler(FOnActorSpawned::FDelegate::CreateUObject(this, &ARGBArenaControl::HandleActorSpawned));
+	}
 }
 
 void ARGBArenaControl::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	GetWorldTimerManager().ClearTimer(InitialEvaluationTimer);
+
+	if (ActorSpawnedHandle.IsValid()) {
+		if (UWorld* World = GetWorld()) {
+			World->RemoveOnActorSpawnedHandler(ActorSpawnedHandle);
+		}
+		ActorSpawnedHandle.Reset();
+	}
 
 	for (ARGBColorPlatform* Platform : AssignedPlatforms) {
 		if (!IsValid(Platform)) {
@@ -143,12 +177,15 @@ void ARGBArenaControl::UpdateProgress() {
 
 		ProgressText->SetText(FText::FromString(TEXT("Arena setup error - check assigned platforms")));
 		UE_LOG(LogTemp, Warning, TEXT("%s: assign at least one platform, with no missing or ") TEXT("duplicate entries, and select a valid required color."), *GetName());
+		OnArenaProgressChanged.Broadcast(0.0f);
 		return;
 	}
 
 	const int32 TotalPlatforms = AssignedPlatforms.Num();
 
 	CompletionPercentage = 100.0f * MatchingPlatformCount / TotalPlatforms;
+
+	OnArenaProgressChanged.Broadcast(GetCompletionFraction());
 
 	const FString ColorName = StaticEnum<ERGBColor>()->GetNameStringByValue(static_cast<int64>(RequiredColor));
 
@@ -158,6 +195,7 @@ void ARGBArenaControl::UpdateProgress() {
 		CompleteArena();
 	}
 }
+
 void ARGBArenaControl::CompleteArena()
 {
 	if (bCompleted || bResetInProgress) {
@@ -174,9 +212,86 @@ void ARGBArenaControl::CompleteArena()
 		}
 	}
 
+	for (ARGBEnemyCharacter* Enemy : AssignedEnemies) {
+		if (IsValid(Enemy)) {
+			Enemy->DespawnForArenaCompletion();
+		}
+	}
+
 	ProgressText->SetText(FText::FromString(TEXT("Progress: 100.0% - Completed")));
 	OnArenaCompleted.Broadcast();
 }
-// Called when the game starts or when spawned
 
+void ARGBArenaControl::HandleActorSpawned(AActor* SpawnedActor)
+{
+	RegisterEnemyIfInsideArena(Cast<ARGBEnemyCharacter>(SpawnedActor));
+}
 
+void ARGBArenaControl::RegisterEnemyIfInsideArena(ARGBEnemyCharacter* Enemy)
+{
+	if (!IsValid(Enemy) || !IsValid(ArenaCameraZone) || !ArenaCameraZone->ContainWorldLocation(Enemy->GetActorLocation())) {
+		return;
+	}
+
+	if (bCompleted) {
+		Enemy->DespawnForArenaCompletion();
+		return;
+	}
+
+	AssignedEnemies.AddUnique(Enemy);
+
+	if (!bRespawningEnemies) {
+		RecordEnemySpawn(Enemy);
+	}
+}
+
+void ARGBArenaControl::RecordEnemySpawn(ARGBEnemyCharacter* Enemy)
+{
+	if (!IsValid(Enemy)) {
+		return;
+	}
+
+	const TSubclassOf<ARGBEnemyCharacter> EnemyClass = Enemy->GetClass();
+	const FTransform SpawnTransform = Enemy->GetActorTransform();
+
+	for (const FRGBArenaEnemySpawnRecord& ExistingRecord : EnemySpawnRecord) {
+		if (ExistingRecord.EnemyClass == EnemyClass && ExistingRecord.SpawnTransform.Equals(SpawnTransform)) {
+			return;
+		}
+	}
+
+	FRGBArenaEnemySpawnRecord NewRecord;
+	NewRecord.EnemyClass = EnemyClass;
+	NewRecord.SpawnTransform = SpawnTransform;
+
+	EnemySpawnRecord.Add(NewRecord);
+}
+
+void ARGBArenaControl::RespawnRecordedEnemy()
+{
+	UWorld* World = GetWorld();
+
+	if (!IsValid(World)) {
+		return;
+	}
+
+	bRespawningEnemies = true;
+
+	for (const FRGBArenaEnemySpawnRecord& Record : EnemySpawnRecord) {
+		if (!Record.EnemyClass) {
+			continue;
+		}
+
+		FActorSpawnParameters SpawnParameters;
+		SpawnParameters.Owner = this;
+		SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		SpawnParameters.TransformScaleMethod = ESpawnActorScaleMethod::OverrideRootScale;
+
+		ARGBEnemyCharacter* Enemy = World->SpawnActor<ARGBEnemyCharacter>(Record.EnemyClass, Record.SpawnTransform, SpawnParameters);
+
+		if (IsValid(Enemy)) {
+			AssignedEnemies.AddUnique(Enemy);
+		}
+	}
+	bRespawningEnemies = false;
+}

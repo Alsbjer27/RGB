@@ -1,5 +1,88 @@
 RGB - CROSS-PC CODEX HANDOFF
-Last updated: 2026-09-20 (Europe/Stockholm)
+Last updated: 2026-09-27 (Europe/Stockholm)
+
+CURRENT HANDOFF - SEPTEMBER 27 (SUPERSEDES OLDER RESUME DETAILS)
+
+CURRENT CHECKOUT AND WORKING TREE
+- Current checkout: C:\Users\emilr\Desktop\SpelProjekt\RGB, branch main.
+- Current inspected HEAD: 01f64da, "Merge heavy enemy and player work".
+- The working tree contains a large set of modified and untracked source,
+  Unreal, Blender, FBX, texture, material, UI and map files. Preserve all user
+  work. Review `git status` before staging and do not include generated folders.
+- This refresh changes only CODEX_HANDOFF.txt. Codex did not stage, commit or
+  push anything.
+
+LATEST VERIFIED GAMEPLAY STATUS
+- The user repeatedly built the Development Editor successfully while adding
+  the systems below and confirmed the resulting behavior in PIE. The final
+  teleporter kick/mirroring cleanup has been inspected on disk, but the user has
+  not yet explicitly reported a fresh build after that last cleanup.
+- Player weapon color changes material element 2 between red, green and blue
+  emissive materials according to the selected projectile color.
+- Enemy color combat works. Enemies have a fixed RGB spawn color independent of
+  type. Matching projectiles damage them, mismatched colors do not. The heavy
+  takes three matching hits; weaker enemies take one. Defeated enemies transfer
+  their color to the supporting platform.
+- Heavy attack damage is implemented in C++ with configurable damage, hit delay,
+  range padding and a range/height recheck at impact time.
+- Player health is implemented in C++ with MaxHealth/CurrentHealth, RecieveDamage,
+  OnHealthChanged and getters. Reaching zero uses the existing game-mode restart
+  path. The user confirmed player respawn, arena reset, enemy restoration and HUD
+  recreation all work.
+
+HUD AND ARENA PROGRESS
+- Widget asset: Content/RGB/UI/HUD/WBP_RGBHUD_Prototype.uasset.
+- The arena exposes OnArenaProgressChanged(float) and GetCompletionFraction().
+  It broadcasts zero during reset and the current normalized fraction whenever
+  progress changes.
+- Image_ArenaLiquid uses a dynamic UI material instance. UpdateArenaProgress sets
+  its FillAmount scalar. DisplayedArenaProgress interpolates toward
+  TargetArenaProgress on Widget Tick using FInterpTo and ProgressInterpSpeed.
+- The player Blueprint creates, stores and adds the HUD to the viewport. EndPlay
+  validates the stored widget and removes it from its parent so respawning does
+  not leave duplicate widgets.
+- Three health pip images remain visible. UpdatePlayerHealth changes each pip's
+  color and opacity: healthy pips are white and lost-health pips are dark gray.
+- Arena reset/completion now tracks assigned and runtime-spawned enemies. It
+  records enemy class and transform, despawns them for reset/completion, and
+  respawns them with OverrideRootScale so Blueprint scale is restored.
+
+BUILD MEMORY FIX
+- The recurring UbaSessionServer low-memory compile-kill loop was resolved in
+  the user's per-user Unreal Build Tool configuration by setting
+  MaxParallelActions=2 and bAllowUBAExecutor=false. The user confirmed subsequent
+  builds succeeded.
+
+TELEPORTER - CURRENT FINAL STATE
+- Source/RGB/AI/RGBTeleporterEnemyCharacter.h/.cpp defines
+  ARGBTeleporterEnemyCharacter, with bPatrolEnabled=false.
+- It searches once at BeginPlay for nearby ATargetPoint actors tagged
+  TeleporterPoint. Teleporting activates when the player approaches any of those
+  target points, then selects the valid available point closest to the player.
+- Target points represent platform surfaces, so code adds the scaled capsule
+  half-height. It preserves the current 2.5D Y plane.
+- Multiple teleporters act independently. LastTeleportPoint is per instance and
+  destination occupancy uses a Pawn capsule overlap with configurable padding,
+  preventing teleporters from stacking at one point.
+- TeleportTo preserves GetActorRotation(). No teleporter-specific forced yaw,
+  per-frame rotation lock, attack timer, mirror flag or attack montage call
+  remains in the current C++ source.
+- A side-kick montage and runtime Mirror Data Table approach was tried and then
+  deliberately abandoned. It caused unreliable pose/root rotation despite a
+  dynamically updated left/right mirror Boolean. The user chose to remove all
+  kick, mirror and teleporter rotation behavior.
+- The teleporter should currently use only its idle pose and teleport behavior.
+  In the Blueprint/AnimBP, the kick montage must be cleared and the animation
+  graph reduced to idle -> output, with the Mirror node/event logic removed.
+  The user performed this cleanup; verify saved assets and a fresh build/PIE on
+  the next session.
+- A future teleporter AoE attack is intentionally deferred. Do not resume it
+  unless the user asks.
+
+NEXT WORK
+- The user wants to focus on another feature before implementing teleporter AoE.
+  Ask what feature they want next. Before new gameplay work, reconcile this
+  handoff with current disk/source and preserve the dirty working tree.
 
 CURRENT HANDOFF - SEPTEMBER 20 (SUPERSEDES SEPTEMBER 19 RESUME DETAILS)
 

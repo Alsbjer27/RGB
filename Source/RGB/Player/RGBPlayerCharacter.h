@@ -19,7 +19,11 @@ class ARGBColorPlatform;
 
 class ARGBProjectile;
 
+class UMaterialInterface;
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FRGBWeaponColorChangedSignature, ERGBColor, NewColor);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FRGBPlayerHealthChangedSignature, int32, CurrentHealth, int32, MaxHealth);
 
 UCLASS()
 class RGB_API ARGBPlayerCharacter : public ACharacter
@@ -38,6 +42,17 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "RGB|Color")
 	FRGBWeaponColorChangedSignature OnWeaponColorChanged;
 
+	UPROPERTY(BlueprintAssignable, Category = "RGB|Health")
+	FRGBPlayerHealthChangedSignature OnHealthChanged;
+
+	UFUNCTION(BlueprintCallable, Category = "RGB|Health")
+	bool RecieveDamage(int32 DamageAmount);
+
+	UFUNCTION(BlueprintPure, Category = "RGB|Health")
+	int32 GetCurrentHealth() const { return CurrentHealth; }
+
+	UFUNCTION(BlueprintPure, Category = "RGB|Health")
+	int32 GetMaxHealth() const { return MaxHealth; }
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
@@ -93,6 +108,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Input")
 	TObjectPtr<UInputAction> PreviousWeaponColorAction;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Health")
+	int32 MaxHealth = 3;
+
 
 private:
 	void NextWeaponColor();
@@ -101,6 +119,20 @@ private:
 
 	UPROPERTY(Transient, VisibleInstanceOnly, Category = "RGB|Combat")
 	ERGBColor SelectedWeaponColor = ERGBColor::Red;
+
+	void ApplyWeaponColorMaterial();
+
+	UPROPERTY(EditDefaultsOnly, Category = "RGB|Combat|Materials")
+	TObjectPtr<UMaterialInterface> RedWeaponMaterial;
+
+	UPROPERTY(EditDefaultsOnly, Category = "RGB|Combat|Materials")
+	TObjectPtr<UMaterialInterface> GreenWeaponMaterial;
+
+	UPROPERTY(EditDefaultsOnly, Category = "RGB|Combat|Materials")
+	TObjectPtr<UMaterialInterface> BlueWeaponMaterial;
+
+	UPROPERTY(Transient, VisibleInstanceOnly, Category = "RGB|Health")
+	int32 CurrentHealth = 3;
 
 public:	
 	// Called every frame

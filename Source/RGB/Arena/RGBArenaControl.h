@@ -12,8 +12,22 @@ class ARGBColorPlatform;
 class USceneComponent;
 class ARGBArenaCameraZone;
 class UTextRenderComponent;
+class ARGBEnemyCharacter;
+
+USTRUCT()
+struct FRGBArenaEnemySpawnRecord {
+	GENERATED_BODY()
+
+	UPROPERTY()
+	TSubclassOf<ARGBEnemyCharacter> EnemyClass;
+
+	UPROPERTY()
+	FTransform SpawnTransform = FTransform::Identity;
+};
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FRGBArenaCompletedSignature);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FRGBArenaProgressChangedSignature, float, Progress);
 
 UCLASS()
 class RGB_API ARGBArenaControl : public AActor
@@ -33,6 +47,14 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "RGB|Arena")
 	FRGBArenaCompletedSignature OnArenaCompleted;
 
+	UPROPERTY(BlueprintAssignable, Category = "RGB|Arena")
+	FRGBArenaProgressChangedSignature OnArenaProgressChanged;
+
+	UFUNCTION(BlueprintPure, Category = "RGB|Arena")
+	float GetCompletionFraction() const {
+		return FMath::Clamp(CompletionPercentage / 100.0f, 0.0f, 1.0f);
+	}
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -48,6 +70,9 @@ protected:
 
 	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "RGB|Arena")
 	TArray<TObjectPtr<ARGBColorPlatform>> AssignedPlatforms;
+
+	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "RGB|Arena")
+	TArray<TObjectPtr<ARGBEnemyCharacter>> AssignedEnemies;
 
 	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "RGB|Arena")
 	TObjectPtr<ARGBArenaCameraZone> ArenaCameraZone;
@@ -75,4 +100,18 @@ private:
 	bool bResetInProgress = true;
 
 	FTimerHandle InitialEvaluationTimer;
+
+	void HandleActorSpawned(AActor* SpawnedActor);
+	void RegisterEnemyIfInsideArena(ARGBEnemyCharacter* Enemy);
+
+	FDelegateHandle ActorSpawnedHandle;
+
+	void RecordEnemySpawn(ARGBEnemyCharacter* Enemy);
+	void RespawnRecordedEnemy();
+
+	UPROPERTY(Transient)
+	TArray<FRGBArenaEnemySpawnRecord> EnemySpawnRecord;
+
+	bool bRespawningEnemies = false;
+	bool bEnemiesNeedRespawn = false;
 };

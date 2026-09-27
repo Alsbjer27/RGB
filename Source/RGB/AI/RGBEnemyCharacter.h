@@ -3,10 +3,12 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "../Platforms/RGBColorComponent.h"
 #include "GameFramework/Character.h"
 #include "RGBEnemyCharacter.generated.h"
 
 class UAnimMontage;
+class UMaterialInterface;
 
 UCLASS()
 class RGB_API ARGBEnemyCharacter : public ACharacter
@@ -18,6 +20,10 @@ public:
 	ARGBEnemyCharacter();
 
 	virtual void Tick(float DeltaTime) override;
+
+	bool RecieveColorHit(ERGBColor ProjectileColor);
+
+	void DespawnForArenaCompletion();
 
 protected:
 	virtual void BeginPlay() override;
@@ -56,6 +62,43 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "RGB|Attack")
 	float AttackPlayRate = 1.25f;
 
+	UPROPERTY(EditAnywhere, Category = "RGB|Attack")
+	int32 AttackDamage = 1;
+
+	UPROPERTY(EditAnywhere, Category = "RGB|Attack")
+	float AttackHitDelay = 0.35f;
+
+	UPROPERTY(EditAnywhere, Category = "RGB|Attack")
+	float AttackHitRangePadding = 20.0f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RGB|Color")
+	TObjectPtr<URGBColorComponent> ColorComponent;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Color Materials")
+	TObjectPtr<UMaterialInterface> RedBaseMaterial;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Color Materials")
+	TObjectPtr<UMaterialInterface> RedEmissionMaterial;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Color Materials")
+	TObjectPtr<UMaterialInterface> GreenBaseMaterial;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Color Materials")
+	TObjectPtr<UMaterialInterface> GreenEmissionMaterial;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Color Materials")
+	TObjectPtr<UMaterialInterface> BlueBaseMaterial;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Color Materials")
+	TObjectPtr<UMaterialInterface> BlueEmissionMaterial;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Health")
+	int32 MaxHealth = 1;
+
+	bool IsPlayerWithinAttackRange(const ACharacter* Player) const;
+	void StartAttackAgainst(ACharacter* Player);
+
+
 private:
 	bool CanWalkInDirection(float Direction, float DeltaTime) const;
 	void UpdatePlayerDetection();
@@ -73,9 +116,21 @@ private:
 	void StartAttack();
 	void UpdateAttack();
 
+	void TryApplyAttackDamage();
+	FTimerHandle AttackDamageTimer;
+
 	bool bAttacking = false;
 	double NextAttackAllowedTime = 0.0;
 
 	UPROPERTY(Transient)
 	TWeakObjectPtr<ACharacter> TargetPlayer;
+
+	UPROPERTY(Transient, VisibleInstanceOnly, Category = "RGB|Health")
+	int32 CurrentHealth = 1;
+
+	bool bEliminated = false;
+
+	void ApplyColorMaterial(ERGBColor Color);
+
+	void TransferColorSupportingPlatform();
 };

@@ -17,11 +17,19 @@
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
 
+#include "Materials/MaterialInterface.h"
+
+#include "../Platforms/RGBColorPlatform.h"
+
+#include "../Player/RGBPlayerCharacter.h"
+
 // Sets default values
 ARGBEnemyCharacter::ARGBEnemyCharacter()
 {
  	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
+
+	ColorComponent = CreateDefaultSubobject<URGBColorComponent>(TEXT("ColorComponent"));
 
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
 
@@ -135,22 +143,104 @@ void ARGBEnemyCharacter::Tick(float DeltaTime)
 	AddMovementInput(FVector::ForwardVector, PatrolDirection);
 }
 
+bool ARGBEnemyCharacter::RecieveColorHit(ERGBColor ProjectileColor)
+{
+	if (bEliminated || !IsValid(ColorComponent)) {
+		return false;
+	}
+
+	if (ProjectileColor != ColorComponent->GetCurrentColor()) {
+		return false;
+	}
+
+	CurrentHealth = FMath::Max(CurrentHealth - 1, 0);
+
+	if (CurrentHealth > 0) {
+		return true;
+	}
+
+	bEliminated = true;
+
+	GetCharacterMovement()->StopMovementImmediately();
+	ConsumeMovementInputVector();
+
+	TransferColorSupportingPlatform();
+
+	Destroy();
+	return true;
+}
+
+void ARGBEnemyCharacter::DespawnForArenaCompletion()
+{
+	if (bEliminated) {
+		return;
+	}
+
+	bEliminated = true;
+
+	GetCharacterMovement()->StopMovementImmediately();
+	ConsumeMovementInputVector();
+
+	Destroy();
+}
+
 void ARGBEnemyCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
-	PatrolDirection = GetActorForwardVector().X >= 0.0f ? 1.0f : -1.0f;
+	CurrentHealth = FMath::Max(MaxHealth, 1);
+	bEliminated = false;
 
-	SetActorRotation(FRotator(0.0f, PatrolDirection > 0.0f ? 0.0f : 180.0f, 0.0f));
+	if (IsValid(ColorComponent)) {
+		ApplyColorMaterial(ColorComponent->GetCurrentColor());
+	}
+	else {
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("%s has no valid ColorComponent."),
+			*GetName());
+	}
 
-	GetWorldTimerManager().SetTimer(DetectionTimer, this, &ARGBEnemyCharacter::UpdatePlayerDetection, 0.1f, true);
+	if (bPatrolEnabled) {
+		PatrolDirection = GetActorForwardVector().X >= 0.0f ? 1.0f : -1.0f;
+
+		SetActorRotation(FRotator(0.0f, PatrolDirection > 0.0f ? 0.0f : 180.0f, 0.0f));
+
+		GetWorldTimerManager().SetTimer(DetectionTimer, this, &ARGBEnemyCharacter::UpdatePlayerDetection, 0.1f, true);
+	}
 }
 
 void ARGBEnemyCharacter::EndPlay(EEndPlayReason::Type EndPlayReason)
 {
 	GetWorldTimerManager().ClearTimer(DetectionTimer);
+	GetWorldTimerManager().ClearTimer(AttackDamageTimer);
 	TargetPlayer.Reset();
 	Super::EndPlay(EndPlayReason);
+}
+
+bool ARGBEnemyCharacter::IsPlayerWithinAttackRange(const ACharacter* Player) const
+{
+	if (!IsValid(Player)) {
+		return false;
+	}
+
+	const float DistanceX = FMath::Abs(Player->GetActorLocation().X - GetActorLocation().X);
+	const float AllowedDistance = GetCapsuleComponent()->GetScaledCapsuleRadius() + Player->GetCapsuleComponent()->GetScaledCapsuleRadius() + FMath::Max(StopDistanceFromPlayer, 0.0f) + FMath::Max(AttackHitRangePadding, 0.0f);
+	const float EnemyFeetZ = GetActorLocation().Z - GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	const float PlayerFeetZ = Player->GetActorLocation().Z - Player->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+
+	return DistanceX <= AllowedDistance && FMath::Abs(PlayerFeetZ - EnemyFeetZ) <= FMath::Max(DetectionHeightTolerance, 0.0f);
+}
+
+void ARGBEnemyCharacter::StartAttackAgainst(ACharacter* Player)
+{
+	if (!IsPlayerWithinAttackRange(Player)) {
+		return;
+	}
+
+	TargetPlayer = Player;
+	StartAttack();
 }
 
 bool ARGBEnemyCharacter::CanWalkInDirection(float Direction, float DeltaTime) const
@@ -318,7 +408,19 @@ void ARGBEnemyCharacter::StartAttack()
 		NextAttackAllowedTime = GetWorld()->GetTimeSeconds() + 1.0;
 		return;
 	}
+
 	bAttacking = true;
+
+	GetWorldTimerManager().ClearTimer(AttackDamageTimer);
+
+	const float DamageDelay = FMath::Max(AttackHitDelay, 0.0f) / SafePlayRate;
+
+	if (DamageDelay <= SMALL_NUMBER) {
+		TryApplyAttackDamage();
+	}
+	else {
+		GetWorldTimerManager().SetTimer(AttackDamageTimer, this, &ARGBEnemyCharacter::TryApplyAttackDamage, DamageDelay, false);
+	}
 }
 
 void ARGBEnemyCharacter::UpdateAttack()
@@ -332,5 +434,98 @@ void ARGBEnemyCharacter::UpdateAttack()
 	bAttacking = false;
 
 	NextAttackAllowedTime = GetWorld()->GetTimeSeconds() + FMath::Max(AttackCooldown, 0.0f);
+}
+
+void ARGBEnemyCharacter::TryApplyAttackDamage()
+{
+	ARGBPlayerCharacter* Player =
+		Cast<ARGBPlayerCharacter>(TargetPlayer.Get());
+
+	if (!IsValid(Player) || AttackDamage <= 0 || !IsPlayerWithinAttackRange(Player)) {
+		return;
+	}
+
+	Player->RecieveDamage(AttackDamage);
+}
+
+void ARGBEnemyCharacter::ApplyColorMaterial(ERGBColor Color)
+{
+	UMaterialInterface* BaseMaterial = nullptr;
+	UMaterialInterface* EmissionMaterial = nullptr;
+
+	switch (Color) {
+	case ERGBColor::Red:
+		BaseMaterial = RedBaseMaterial.Get();
+		EmissionMaterial = RedEmissionMaterial.Get();
+		break;
+
+	case ERGBColor::Green:
+		BaseMaterial = GreenBaseMaterial.Get();
+		EmissionMaterial = GreenEmissionMaterial.Get();
+		break;
+
+	case ERGBColor::Blue:
+		BaseMaterial = BlueBaseMaterial.Get();
+		EmissionMaterial = BlueEmissionMaterial.Get();
+		break;
+
+	default:
+		ensureMsgf(false, TEXT("%s has an invalid enemy color"), *GetName());
+	}
+
+	if (!IsValid(GetMesh())) {
+		return;
+	}
+
+	if (IsValid(BaseMaterial)) {
+		GetMesh()->SetMaterial(0, BaseMaterial);
+	}
+	else {
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("%s is missing its base material for color %d."),
+			*GetName(),
+			static_cast<int32>(Color));
+	}
+
+	if (IsValid(EmissionMaterial)) {
+		GetMesh()->SetMaterial(1, EmissionMaterial);
+	}
+	else {
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("%s is missing its emission material for color %d."),
+			*GetName(),
+			static_cast<int32>(Color));
+	}
+}
+
+void ARGBEnemyCharacter::TransferColorSupportingPlatform()
+{
+	if (!IsValid(ColorComponent)) {
+		return;
+	}
+
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+
+	if (!IsValid(Movement) || !Movement->IsMovingOnGround()) {
+		return;
+	}
+
+	ARGBColorPlatform* SupportingPlatform = Cast<ARGBColorPlatform>(Movement->CurrentFloor.HitResult.GetActor());
+
+	if (!IsValid(SupportingPlatform)) {
+		return;
+	}
+
+	URGBColorComponent* PlatformColor = SupportingPlatform->GetColorComponent();
+
+	if (!IsValid(PlatformColor)) {
+		return;
+	}
+
+	PlatformColor->SetColor(ColorComponent->GetCurrentColor());
 }
 

@@ -32,6 +32,8 @@ public:
 
 	ERGBArenaViewMode GetArenaViewMode() const { return ArenaViewMode; }
 
+	bool ContainWorldLocation(const FVector& WorldLocation) const;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;

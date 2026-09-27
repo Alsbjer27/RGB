@@ -8,6 +8,8 @@
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Materials/MaterialInterface.h"
 
+#include "../AI/RGBEnemyCharacter.h"
+
 // Sets default values
 ARGBProjectile::ARGBProjectile()
 {
@@ -96,7 +98,10 @@ void ARGBProjectile::BeginPlay()
 
 void ARGBProjectile::HandleProjectileStopped(const FHitResult& ImpactResult)
 {
+	if (bColorInitialized) {
+		if (ARGBEnemyCharacter* Enemy = Cast<ARGBEnemyCharacter>(ImpactResult.GetActor())) {
+			Enemy->RecieveColorHit(ProjectileColor);
+		}
+	}
 	Destroy();
 }
-
-

@@ -41,6 +41,18 @@ ARGBArenaCameraZone::ARGBArenaCameraZone()
 	ArenaCamera->bUsePawnControlRotation = false;
 }
 
+bool ARGBArenaCameraZone::ContainWorldLocation(const FVector& WorldLocation) const
+{
+	if (!IsValid(ArenaBounds)) {
+		return false;
+	}
+
+	const FVector LocalLocation = ArenaBounds->GetComponentTransform().InverseTransformPosition(WorldLocation);
+	const FVector Extent = ArenaBounds->GetUnscaledBoxExtent();
+
+	return FMath::Abs(LocalLocation.X) <= Extent.X && FMath::Abs(LocalLocation.Y) <= Extent.Y && FMath::Abs(LocalLocation.Z) <= Extent.Z;
+}
+
 void ARGBArenaCameraZone::BeginPlay()
 {
 	Super::BeginPlay();

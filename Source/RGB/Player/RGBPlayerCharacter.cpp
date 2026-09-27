@@ -89,11 +89,53 @@ void ARGBPlayerCharacter::FellOutOfWorld(const UDamageType& DamageType)
 	Super::FellOutOfWorld(DamageType);
 }
 
+bool ARGBPlayerCharacter::RecieveDamage(int32 DamageAmount)
+{
+	if (DamageAmount <= 0 || CurrentHealth <= 0) {
+		return false;
+	}
+
+	const int32 PreviousHealth = CurrentHealth;
+
+	CurrentHealth = FMath::Clamp(CurrentHealth - DamageAmount, 0, FMath::Max(MaxHealth, 1));
+
+	if (CurrentHealth == PreviousHealth) {
+		return false;
+	}
+
+	OnHealthChanged.Broadcast(CurrentHealth, FMath::Max(MaxHealth, 1));
+
+	if (CurrentHealth == 0) {
+		ARGBGameMode* GameMode = GetWorld()->GetAuthGameMode<ARGBGameMode>();
+		AController* PlayerController = Controller;
+
+		if (!IsValid(GameMode) || !IsValid(PlayerController)) {
+			UE_LOG(
+				LogTemp,
+				Error,
+				TEXT("Player death could not restart the mechanics test."));
+			return true;
+		}
+
+		if (!GameMode->RestartMechanicsTest(PlayerController)) {
+			UE_LOG(
+				LogTemp,
+				Error,
+				TEXT("Player death restart failed."));
+		}
+		return true;
+	}
+
+	return true;
+}
+
 // Called when the game starts or when spawned
 void ARGBPlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-	
+
+	CurrentHealth = FMath::Max(MaxHealth, 1);
+	ApplyWeaponColorMaterial();
 }
 
 void ARGBPlayerCharacter::Landed(const FHitResult& Hit)
@@ -144,6 +186,9 @@ void ARGBPlayerCharacter::Move(const FInputActionValue& Value)
 
 	if (!FMath::IsNearlyZero(MoveAmount)) {
 		LastFacingDirection = MoveAmount > 0.0f ? 1.0 : -1.0f;
+
+		const float FacingYaw = MoveAmount > 0.0f ? 180.0f : 0.0f;
+		GetMesh()->SetRelativeRotation(FRotator(0.0f, FacingYaw, 0.0f));
 	}
 
 	AddMovementInput(FVector::ForwardVector, MoveAmount);
@@ -231,18 +276,34 @@ void ARGBPlayerCharacter::Fire()
 	const bool bBlocked = GetWorld()->SweepSingleByChannel(Hit, Start, SpawnLocation, FQuat::Identity, ECC_WorldDynamic, FCollisionShape::MakeSphere(10.0f), QueryParams);
 
 	if (bBlocked) {
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("FIRE BLOCKED: Player=%s | Facing=%.1f | Hit=%s"),
+			*GetName(),
+			LastFacingDirection,
+			*GetNameSafe(Hit.GetActor()));
+
 		return;
 	}
 
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.Owner = this;
 	SpawnParams.Instigator = this;
-	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::DontSpawnIfColliding;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
 	ARGBProjectile* Projectile = GetWorld()->SpawnActor<ARGBProjectile>(ProjectileClass, SpawnLocation, Direction.Rotation(), SpawnParams);
 
 	if (IsValid(Projectile)) {
 		Projectile->InitializeColor(SelectedWeaponColor);
+	}
+	else {
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("FIRE SPAWN FAILED: Player=%s | Facing=%.1f"),
+			*GetName(),
+			LastFacingDirection);
 	}
 }
 
@@ -293,7 +354,37 @@ void ARGBPlayerCharacter::SetSelectedWeaponColor(ERGBColor NewColor)
 	}
 
 	SelectedWeaponColor = NewColor;
+	ApplyWeaponColorMaterial();
 	OnWeaponColorChanged.Broadcast(SelectedWeaponColor);
+}
+
+void ARGBPlayerCharacter::ApplyWeaponColorMaterial()
+{
+	UMaterialInterface* SelectedMaterial = nullptr;
+
+	switch (SelectedWeaponColor) {
+	case ERGBColor::Red:
+		SelectedMaterial = RedWeaponMaterial;
+		break;
+
+	case ERGBColor::Green:
+		SelectedMaterial = GreenWeaponMaterial;
+		break;
+
+	case ERGBColor::Blue:
+		SelectedMaterial = BlueWeaponMaterial;
+		break;
+	}
+
+	if (!ensureMsgf(
+		SelectedMaterial,
+		TEXT("Weapon material is not assigned for the selected color on %s"),
+		*GetName()))
+	{
+		return;
+	}
+
+	GetMesh()->SetMaterial(2, SelectedMaterial);
 }
 
 // Called every frame
