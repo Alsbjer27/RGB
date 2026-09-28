@@ -802,6 +802,53 @@ PROJECTILES AND WEAPON COLOR SELECTION
 - No enemy, damage matching or platform transfer implemented yet. Projectile
   impacts currently only destroy the projectile, never recolor platforms.
 
+PROJECTILE NIAGARA VFX (USER-AUTHORED IN EDITOR, CURRENT SESSION)
+- User is creating these assets manually under Content/RGB/VFX/Projectiles;
+  Codex supplied step-by-step instructions and did not directly edit uassets.
+- M_VFX_ProjectileSprite exists as an additive, unlit, two-sided particle
+  material. Particle Color RGB is multiplied by scalar parameter Intensity
+  (default 20) into Emissive Color. RadialGradientExponential multiplied by
+  Particle Color alpha feeds Opacity Override. User confirmed it compiled.
+- NS_ProjectileTravel exists and is assigned to a Niagara component named
+  ProjectileVFX under ProjectileMesh in BP_RGBProjectile. Auto Activate is on.
+- Travel system EnergyCore emitter: continuous Spawn Rate 100, Local Space on,
+  particle lifetime 0.04-0.08 s, sprite size about 18, temporary bright-blue
+  color, and M_VFX_ProjectileSprite. User reports its gameplay size is roughly
+  correct and it follows the projectile.
+- Travel system RibbonTrail was duplicated from EnergyCore. Local Space is off,
+  lifetime is 0.07-0.11 s, ribbon width is 16, and it uses a Ribbon Renderer
+  with M_VFX_ProjectileSprite temporarily. Existing Scale Color already fades
+  alpha by Particles.NormalizedAge. Scale Ribbon Width was added with a linear
+  1-to-0 curve over NormalizedAge. User reports the shorter/thicker tapered
+  trail looks good.
+- NS_ProjectileMuzzle exists with a MuzzleFlash Simple Sprite Burst: count 1,
+  lifetime 0.04-0.07 s, sprite size about 45, temporary blue color, and the
+  projectile sprite material. BP_RGBProjectile Event BeginPlay calls Niagara
+  Spawn System at Location using actor location/rotation, Auto Destroy on.
+  User reports the muzzle effect works quite well. This is spawned at the
+  projectile start position, not yet from a weapon muzzle socket.
+- NS_ProjectileImpact exists. BP_RGBProjectile Event Destroyed calls Niagara
+  Spawn System at Location using actor location/rotation with Auto Destroy.
+  ImpactFlash is a burst of 1, lifetime 0.08-0.12 s, size about 65, temporary
+  blue color, and M_VFX_ProjectileSprite. User reports the collision flash works.
+- ImpactSparks was duplicated from ImpactFlash. Local Space is on; burst count
+  16; lifetime 0.2-0.4 s; sprite size 4-9; Add Velocity uses In Cone with local
+  cone axis (-1,0,0), angle 60 degrees and random speed 350-750; Drag is 3 and
+  Rotational Drag is disabled. User reports the exaggerated sparks look better.
+- All VFX currently use a fixed blue color. Niagara user color parameters and
+  synchronization with the projectile's authoritative ERGBColor are not done.
+- Event Destroyed is a temporary impact hook: it also plays the impact when the
+  projectile expires by lifespan, not only on collision. Replace it later with
+  a presentation event emitted from the authoritative C++ stop/hit path (or
+  another verified hit-only hook) rather than duplicating gameplay collision.
+- The proposed next edit was NOT performed: animate ImpactFlash via its existing
+  Scale Sprite Size module using Particles.NormalizedAge, approximately 0.4 at
+  age 0, 1.3 at age 0.25 and 1.6 at age 1. Continue from this exact step.
+- After that, likely polish tasks are an expanding impact ring, optional travel
+  wisps, a dedicated ribbon material, RGB color propagation, and eventually
+  spawning muzzle VFX from a real weapon/muzzle socket. Tune and test one layer
+  at a time; preserve existing projectile movement, collision and damage rules.
+
 JUMP PAD
 - Source/RGB/Platforms/RGBJumpPad.h/.cpp: ARGBJumpPad.
   Content/RGB/Blueprints/Platforms/BP_RGBJumpPad.uasset.
