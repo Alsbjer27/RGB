@@ -12,9 +12,12 @@ ARGBColorPlatform::ARGBColorPlatform()
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = false;
 
-	PlatformMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PlatformMesh"));
+	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
+	SetRootComponent(SceneRoot);
 
-	SetRootComponent(PlatformMesh);
+	PlatformMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PlatformMesh"));
+	PlatformMesh->SetupAttachment(SceneRoot);
+	PlatformMesh->SetRelativeRotation(FRotator(0.0f, 90.0f, 0.0f));
 
 	PlatformMesh->SetCollisionProfileName(TEXT("BlockAll"));
 	PlatformMesh->SetSimulatePhysics(false);

@@ -1,5 +1,84 @@
 RGB - CROSS-PC CODEX HANDOFF
-Last updated: 2026-09-27 (Europe/Stockholm)
+Last updated: 2026-09-28 (Europe/Stockholm)
+
+CURRENT HANDOFF - SEPTEMBER 28 (SUPERSEDES OLDER RESUME DETAILS)
+
+CURRENT CHECKOUT AND SAVE STATUS
+- Current checkout: C:\Users\manun\Desktop\Spelprojekt\RGB, branch main.
+- Current inspected HEAD/origin: 2aa243f, "Implement combat HUD, arena resets,
+  and teleporter movement". No unmerged paths were reported, but Codex could
+  not obtain a complete Git status because the sandbox cannot write Git LFS
+  temporary files. Preserve all current source, Unreal and Blender work.
+- This refresh changes only CODEX_HANDOFF.txt. No stage, commit or push was
+  performed by Codex.
+
+COLOR PLATFORM COMPONENT ORIENTATION
+- ARGBColorPlatform now has a neutral SceneRoot. PlatformMesh attaches to it
+  and receives relative rotation FRotator(0, 90, 0), rotating the mesh 90 degrees
+  around world/local Z while leaving actor placement rotation independent.
+- This hierarchy also makes the inherited mesh transform editable as a child
+  component rather than forcing the mesh to remain the actor root.
+
+REUSABLE PATH MOVEMENT SYSTEM
+- New Source/RGB/Platforms/RGBPlatformPath.h/.cpp defines ARGBPlatformPath.
+  Its root USplineComponent is called PathSpline, is open by default, has no
+  Tick, and is exposed for editing. GetPathSpline() provides component access.
+- User placed the path actor and confirmed spline points can be selected and
+  moved in the level editor.
+- New RGBPathMovementComponent.h/.cpp defines a Blueprint-spawnable reusable
+  URGBPathMovementComponent. It references a placed ARGBPlatformPath via the
+  EditInstanceOnly MovementPath property and moves its owning actor along the
+  spline in world space.
+- Settings currently on disk: MovementSpeed default 200, bStartActive true,
+  optional bFollowPathRotation, and bSnapToPathStart true. Runtime movement
+  ping-pongs between spline ends and reflects overshoot. SetMovementEnabled()
+  and IsMovementEnabled() expose activation state. Tick is disabled whenever
+  movement is disabled. The owner root is made Movable during BeginPlay.
+- Movement uses SetActorLocationAndRotation with ETeleportType::None so Unreal
+  updates normal moving-base behavior. It does not sweep the actor.
+- New ARGBMovingPlatform is a plain, non-color platform host with movable
+  SceneRoot, movable blocking PlatformMesh, no physics simulation, and a native
+  RGBPathMovementComponent. Blueprint asset:
+  Content/RGB/Blueprints/Platforms/BP_RGBMovingPlatform.uasset.
+- User assigned PLATFORM_GROUND, placed the Blueprint and path, and configured
+  the path reference. PIE verification reported that it travels up and down,
+  reverses correctly, supports the player, and carries the player with it.
+- RGBMovingPlatform.cpp currently leaves PrimaryActorTick.bCanEverTick=true even
+  though the actor has no Tick override/logic; its movement component owns Tick.
+  This can be changed to false during cleanup, but it did not prevent the test.
+- The design intentionally keeps movement independent of color platforms. Any
+  suitable actor can use RGBPathMovementComponent. Follow Path Rotation supports
+  orientation along a translating spline; a stationary rotation-only mode has
+  not been implemented yet.
+
+COLOR-GROUP ACTIVATION
+- New RGBColorGroupActivator.h/.cpp defines ARGBColorGroupActivator with no Tick.
+  WatchedPlatforms is an EditInstanceOnly array of ARGBColorPlatform references.
+  ControlledActors is an EditInstanceOnly array of arbitrary actors; each must
+  contain URGBPathMovementComponent.
+- BeginPlay binds to every watched platform's existing OnColorChanged delegate.
+  Initial evaluation is deferred one tick to avoid actor/component BeginPlay
+  order problems. EndPlay removes bindings.
+- With bRequireSpecificColor=false, all watched platforms must share any one
+  RGB color. With it true, every watched platform must equal RequiredColor
+  (default Blue). At least two watched platforms are required.
+- When the condition passes, all controlled movement components are enabled.
+  When it fails, bDisableWhenColorDiffer (current exact property spelling) decides
+  whether they stop at their current positions. It defaults true.
+- The user reported successful builds through creation of the movement component,
+  moving-platform actor, and initial color activator. The later specific-color
+  option is present on disk, but no explicit fresh build or PIE result has been
+  reported after that final addition.
+
+IMMEDIATE NEXT CHECK
+- Close Unreal and build after the RequiredColor additions if not already done.
+  Then place/configure RGBColorGroupActivator: set the watched platform array,
+  controlled BP_RGBMovingPlatform, disable Start Active on the platform, choose
+  whether any matching color or RequiredColor should activate it, and verify
+  activation/deactivation in PIE.
+- After functional verification, consider changing ARGBMovingPlatform actor Tick
+  to false and testing optional Follow Path Rotation. Rotation-only movement and
+  additional trigger types remain future extensions.
 
 CURRENT HANDOFF - SEPTEMBER 27 (SUPERSEDES OLDER RESUME DETAILS)
 
