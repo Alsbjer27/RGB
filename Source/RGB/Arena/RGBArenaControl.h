@@ -50,7 +50,7 @@ public:
 	FRGBArenaCompletedSignature OnArenaCompleted;
 
 	UPROPERTY(BlueprintAssignable, Category = "RGB|Arena")
-	FRGBColorChangedSignature OnArenaResetStarted;
+	FRGBArenaResetStartedSignature OnArenaResetStarted;
 
 	UPROPERTY(BlueprintAssignable, Category = "RGB|Arena")
 	FRGBArenaProgressChangedSignature OnArenaProgressChanged;

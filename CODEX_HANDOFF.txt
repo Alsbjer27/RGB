@@ -1,5 +1,192 @@
 RGB - CROSS-PC CODEX HANDOFF
-Last updated: 2026-09-28 (Europe/Stockholm)
+Last updated: 2026-10-01 (Europe/Stockholm)
+
+CURRENT HANDOFF - OCTOBER 1 (ABILITY PICKUPS AND ARENA OUTPUTS)
+
+CURRENT CHECKOUT AND SAVE STATUS
+- Current checkout: C:\Users\emilr\Desktop\SpelProjekt\RGB, branch main.
+- Current inspected HEAD: 688469b, "Projectile effects and level design".
+- HEAD already contains the progression source/assets and the initial arena
+  completion activator. The working tree still has uncommitted changes to
+  CODEX_HANDOFF.txt, RGBArenaCompletionActivator.cpp and RGBArenaControl.h.
+  The latter two complete/fix the arena activator work described below. Commit
+  and push these files before switching PCs if the other checkout must receive
+  the finished implementation.
+- User reported a successful Development Editor build after correcting the
+  reset delegate type. No PIE test of arena-controlled movement has occurred yet.
+
+ABILITY UNLOCK AND PICKUP SYSTEM
+- New Source/RGB/Progression/RGBAbilityUnlockSubsytem.h/.cpp defines the exact
+  current spelling URGBAbilityUnlockSubsytem ("Subsytem" is misspelled in the
+  filenames/class and all references; preserve it unless doing a coordinated
+  Unreal-aware rename). It is a UGameInstanceSubsystem and stores a transient
+  TSet<ERGBPlayerAbility> for Dash, RedWeapon, GreenWeapon and BlueWeapon.
+- UnlockAbility rejects duplicate grants, stores a new unlock and broadcasts
+  OnAbilityUnlocked. State survives player death and level changes within the
+  current game session. It does not yet persist after closing the game; a future
+  SaveGame system can serialize the same state.
+- ARGBPlayerCharacter now queries the subsystem. StartDash exits unless Dash is
+  unlocked. Fire exits unless the selected RGB weapon color is unlocked. Next
+  and previous color selection skip locked colors. GrantAbility stores a new
+  unlock and automatically selects/applies a newly acquired weapon color.
+- New ARGBAbilityPickup owns a query-only Pawn-overlap sphere, a presentation
+  mesh and an editable GrantedAbility. It destroys itself during BeginPlay if
+  that ability was already collected in the current session. On player overlap
+  it calls GrantAbility and destroys itself.
+- Blueprint assets exist under Content/RGB/Blueprints/Progression:
+  BP_RGBAbilityPickup, BP_RGBDashPickup, BP_RGBRedWeaponPickup,
+  BP_RGBGreenWeaponPickup and BP_RGBBlueWeaponPickup.
+- User confirmed the Dash pickup works as intended: dash is unavailable before
+  collection, becomes available after collection and remains unlocked through
+  player respawn. The three weapon-color variants exist, but this handoff has no
+  explicit report of a full PIE pass proving selection/skipping for every color.
+- The player can still visually show its default red material before red is
+  unlocked. The user explicitly deferred that presentation issue.
+
+ARENA COMPLETION ACTIVATOR
+- ARGBArenaControl now declares zero-parameter
+  FRGBArenaResetStartedSignature and exposes OnArenaResetStarted. BeginArenaReset
+  broadcasts it after clearing completion/progress state and before resetting
+  platforms/enemies.
+- Important resolved build error: OnArenaResetStarted was briefly declared as
+  FRGBColorChangedSignature, which expects color arguments and made the empty
+  Broadcast() fail with E0165. The property now correctly uses
+  FRGBArenaResetStartedSignature. The user rebuilt successfully afterward.
+- ARGBArenaCompletionActivator is a no-Tick level actor with an EditInstanceOnly
+  ArenaControl reference and ControlledActors array. At BeginPlay it binds to
+  OnArenaCompleted and OnArenaResetStarted, then defers initial evaluation one
+  tick to avoid BeginPlay ordering problems.
+- On arena completion it finds URGBPathMovementComponent on each controlled
+  actor and enables movement. On arena reset it disables movement. EndPlay
+  removes both dynamic delegate bindings. Missing arena/component references
+  produce warnings rather than crashes.
+
+IMMEDIATE NEXT EDITOR TEST
+- Place RGBArenaCompletionActivator in the intended level.
+- Assign its Arena Control property to the matching placed RGBArenaControl.
+- Add the intended BP_RGBMovingPlatform to Controlled Actors.
+- On that moving platform's RGBPathMovementComponent, assign its path and set
+  Start Active=false.
+- PIE expectations: before arena completion the platform remains still; solving
+  the arena starts it; restarting/resetting the arena stops it again. Verify the
+  Output Log contains no missing-reference warnings.
+- Current reset behavior only stops a controlled actor at its current path
+  position. It does not return it to the spline start. Decide whether reset must
+  rewind controlled actors before adding that behavior.
+
+PLANNED FOLLOW-UP AFTER THE FIRST TEST
+- Door opening can reuse RGBPathMovementComponent, but the component currently
+  ping-pongs forever. Add an explicit one-shot movement mode that stops at the
+  spline endpoint, plus an optional reset-to-start API, before using it as a door.
+- Arena containment remains separate future work. Add an arena-entered event or
+  trigger and entrance/exit blockers so the player cannot leave an active arena;
+  release/open the exit only after OnArenaCompleted. Keep those rules in C++ and
+  use Blueprints only for barrier meshes, paths, effects and tuning.
+
+CURRENT HANDOFF - OCTOBER 1 (PROJECTILE VFX UPDATE)
+
+CURRENT CHECKOUT AND UPDATE SCOPE
+- Current checkout: C:\Users\emilr\Desktop\SpelProjekt\RGB, branch main.
+- Current inspected HEAD: 688469b, "Projectile effects and level design".
+- This section records the projectile Niagara/material work completed with the
+  user in the Unreal editor plus the small C++ presentation bridge currently on
+  disk. Codex supplied step-by-step guidance; the user made the C++ and uasset
+  changes and reported the build/PIE results below.
+- This refresh changes only CODEX_HANDOFF.txt. Codex did not stage, commit or
+  push anything. Preserve all current user work. Read the September 28 section
+  below for the latest unrelated moving-platform/color-activator context.
+
+PROJECTILE CORE MATERIAL AND BLUEPRINT
+- BP_RGBProjectile's ProjectileMesh and ProjectileVFX are sibling components
+  under CollisionShape; the older note saying ProjectileVFX was under the mesh
+  was inaccurate. The visible basic-sphere mesh was reduced from scale 0.20 to
+  0.14 so it better matches the approximately 16-unit ribbon width. The native
+  collision sphere remains radius 10, so this was presentation-only.
+- New M_VFX_ProjectileCore is an additive, unlit surface material. It multiplies
+  a ProjectileColor vector parameter by an Intensity scalar for Emissive Color.
+  An inverted Fresnel drives Opacity; the exponent was reduced to about 0.5 for
+  a visibly soft edge. Intensity was reduced from the initial 20 to 5 because
+  bloom/tonemapping made the three colors difficult to distinguish.
+- New MI_VFX_ProjectileCore_Red, _Green and _Blue material instances are assigned
+  to the existing RedMaterial, GreenMaterial and BlueMaterial properties. The
+  user confirmed the smaller soft core and RGB material switching look good.
+- Source/RGB/Combat/RGBProjectile.h now exposes RedVFXColor, GreenVFXColor and
+  BlueVFXColor plus BlueprintImplementableEvent OnProjectileColorInitialized.
+  InitializeColor selects the matching FLinearColor and calls that event after
+  assigning the mesh material. No C++ implementation body is required for a
+  BlueprintImplementableEvent.
+- The source default BlueVFXColor currently reads (0.02, 0.02, 1.0, 1.0). The
+  user brightened the Blueprint/default presentation blue and the blue core
+  instance during editor tuning; inspect the saved BP/MI values before changing
+  the C++ default or assuming they are identical.
+
+IMPACT POLISH
+- ImpactFlash now scales over Particles.NormalizedAge using approximately
+  0.40 at age 0, 1.30 at age 0.25 and 1.60 at age 1. Its base sprite size was
+  reduced from about 65 to 50 while lifetime was lengthened to roughly
+  0.15-0.20 seconds. The user reported the longer, smaller expanding flash is
+  easier to read and looks better.
+- New M_VFX_ProjectileRing builds a hollow mask from two centered
+  RadialGradientExponential nodes: outer radius 0.50, inner radius 0.36 and a
+  shared density around 8. Outer minus inner is saturated and multiplied by
+  Particle Color alpha for opacity.
+- NS_ProjectileImpact now contains ImpactRing, duplicated from ImpactFlash and
+  assigned the ring material. Reported tuning: base size 60, lifetime
+  0.22-0.30, and uniform size curve approximately 0.30 at age 0, 1.25 at age
+  0.30 and 1.80 at age 1. The user confirmed the combined central flash,
+  expanding ring and directional sparks look good in PIE.
+
+TRAVEL POLISH AND DEDICATED RIBBON
+- NS_ProjectileTravel now contains a third emitter, TravelWisps. It is world
+  space (Local Space off), with the guided/reported working setup of Spawn Rate
+  40, lifetime 0.12-0.20, sprite size 8, Sphere Location radius about 10 and
+  random velocity emphasizing visible-plane spread (approximately X -40..40,
+  Y 0, Z -200..200). The wisps are less noticeable in bright areas and look
+  good in dark areas. Lighting/exposure has not been addressed yet; the user is
+  satisfied with this for now.
+- New dedicated ribbon material is saved with the exact current filename
+  M_VFX_ProjecleRibbon.uasset ("Projecle" typo). Do not rename it casually;
+  preserve or update references if the spelling is cleaned up later.
+- The ribbon opacity mask uses TextureCoordinate G, subtract 0.5, Abs, multiply
+  by 2, OneMinus, Saturate and Power with exponent about 2. This produces a
+  bright center and soft transparent width edges. Niagara Ribbons usage is on
+  and Niagara Sprites usage was turned off. RibbonTrail now uses this material,
+  and the user reports that it looks good with the existing tapered width.
+
+RGB NIAGARA PARAMETER PROPAGATION
+- NS_ProjectileTravel, NS_ProjectileMuzzle and NS_ProjectileImpact each expose a
+  Linear Color user parameter named User.ProjectileColor.
+- EnergyCore, RibbonTrail and TravelWisps bind Initialize Particle Color to that
+  parameter. MuzzleFlash binds to it. ImpactFlash, ImpactSparks and ImpactRing
+  also bind to it. Existing Scale Color modules must preserve RGB (white scale)
+  while using alpha for fades.
+- ProjectileVFX Auto Activate is disabled. BP_RGBProjectile implements
+  OnProjectileColorInitialized, stores NewColor in a Linear Color variable named
+  ProjectileVFXColor, sets User.ProjectileColor on the travel component, then
+  activates the component with Reset enabled.
+- The muzzle spawn was moved out of Event BeginPlay and into the end of the
+  OnProjectileColorInitialized execution chain. It spawns NS_ProjectileMuzzle
+  with Auto Activate off and Auto Destroy on, sets User.ProjectileColor from the
+  stored ProjectileVFXColor, then activates the returned Niagara component.
+- Event Destroyed still spawns NS_ProjectileImpact, now with Auto Activate off
+  and Auto Destroy on. The Blueprint sets User.ProjectileColor on the returned
+  component from ProjectileVFXColor and then activates it. The user confirmed
+  travel, muzzle and all impact layers match red, green and blue projectiles.
+
+VERIFICATION AND KNOWN DEFERRED CLEANUP
+- The user reported a successful build after adding the C++ event/color fields
+  and successful PIE checks of the resized core, travel effects, muzzle and
+  impact across all three projectile colors. These are user-reported checks;
+  Codex did not independently run Unreal or inspect the internal Blueprint and
+  Niagara graphs beyond the screenshots supplied during the session.
+- Impact spawning intentionally remains on Blueprint Event Destroyed for now.
+  It therefore also plays when a projectile reaches its three-second lifespan,
+  not only after collision. The user is happy with the current result and chose
+  to defer replacing this with a hit-only C++ presentation event.
+- Muzzle VFX still originates at the projectile spawn position rather than a
+  real weapon muzzle socket. Lighting/exposure tuning and any further VFX polish
+  are also deferred. There is no immediate projectile-VFX next action unless
+  the user requests it.
 
 CURRENT HANDOFF - SEPTEMBER 28 (SUPERSEDES OLDER RESUME DETAILS)
 

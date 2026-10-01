@@ -25,11 +25,53 @@ void ARGBArenaCompletionActivator::BeginPlay()
 	}
 
 	ArenaControl->OnArenaCompleted.AddUniqueDynamic(this, &ARGBArenaCompletionActivator::HandleArenaCompleted);
-	ArenaControl->OnArenaResetstarted.AddUniqueDynamic(this, &ARGBArenaCompletionActivator::HandleArenaResetStarted);
+	ArenaControl->OnArenaResetStarted.AddUniqueDynamic(this, &ARGBArenaCompletionActivator::HandleArenaResetStarted);
 
+	GetWorldTimerManager().SetTimerForNextTick(this, &ARGBArenaCompletionActivator::InitializeActivationState);
+}
 
+void ARGBArenaCompletionActivator::EndPlay(EEndPlayReason::Type EndPlayReason)
+{
+	if (IsValid(ArenaControl)) {
+		ArenaControl->OnArenaCompleted.RemoveDynamic(this, &ARGBArenaCompletionActivator::HandleArenaCompleted);
+		ArenaControl->OnArenaResetStarted.RemoveDynamic(this, &ARGBArenaCompletionActivator::HandleArenaResetStarted);
+	}
+
+	Super::EndPlay(EndPlayReason);
+}
+
+void ARGBArenaCompletionActivator::InitializeActivationState()
+{
+	SetControlledMovementEnabled(IsValid(ArenaControl) && ArenaControl->IsCompleted());
+}
+
+void ARGBArenaCompletionActivator::SetControlledMovementEnabled(bool bEnabled)
+{
+	for (AActor* ControlledActor : ControlledActors) {
+		if (!IsValid(ControlledActor)) {
+			continue;
+		}
+
+		URGBPathMovementComponent* Movement = ControlledActor->FindComponentByClass<URGBPathMovementComponent>();
+
+		if (IsValid(Movement)) {
+			Movement->SetMovementEnabled(bEnabled);
+		}
+		else {
+			UE_LOG(
+				LogTemp,
+				Warning,
+				TEXT("%s controls %s, but it has no " "RGB Path Movement Component."), *GetName(), *GetNameSafe(ControlledActor));
+		}
+	}
+}
+
+void ARGBArenaCompletionActivator::HandleArenaCompleted()
+{
+	SetControlledMovementEnabled(true);
 }
 
 void ARGBArenaCompletionActivator::HandleArenaResetStarted()
 {
+	SetControlledMovementEnabled(false);
 }
