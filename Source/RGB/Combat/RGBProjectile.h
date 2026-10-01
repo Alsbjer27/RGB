@@ -46,6 +46,19 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Material")
 	TObjectPtr<UMaterialInterface> BlueMaterial;
+
+	UFUNCTION(BlueprintImplementableEvent, Category = "RGB|Projectile|VFX")
+	void OnProjectileColorInitialized(FLinearColor NewColor);
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Projectile|VFX")
+	FLinearColor RedVFXColor = FLinearColor(1.0f, 0.02f, 0.01f, 1.0f);
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Projectile|VFX")
+	FLinearColor GreenVFXColor = FLinearColor(0.02f, 1.0f, 0.05f, 1.0f);
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Projectile|VFX")
+	FLinearColor BlueVFXColor = FLinearColor(0.02f, 0.02f, 1.0f, 1.0f);
+
 private:
 	UFUNCTION()
 	void HandleProjectileStopped(const FHitResult& ImpactResult);

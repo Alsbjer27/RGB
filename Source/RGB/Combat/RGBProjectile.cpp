@@ -56,18 +56,22 @@ void ARGBProjectile::InitializeColor(ERGBColor InColor)
 	}
 
 	UMaterialInterface* SelectedMaterial = nullptr;
+	FLinearColor SelectedVFXColor = FLinearColor::White;
 
 	switch (InColor) {
 	case ERGBColor::Red:
 		SelectedMaterial = RedMaterial.Get();
+		SelectedVFXColor = RedVFXColor;
 		break;
 
 	case ERGBColor::Green:
 		SelectedMaterial = GreenMaterial.Get();
+		SelectedVFXColor = GreenVFXColor;
 		break;
 
 	case ERGBColor::Blue:
 		SelectedMaterial = BlueMaterial.Get();
+		SelectedVFXColor = BlueVFXColor;
 		break;
 
 	default:
@@ -84,7 +88,7 @@ void ARGBProjectile::InitializeColor(ERGBColor InColor)
 	else {
 		UE_LOG(LogTemp, Warning, TEXT("%s: missing projectile mesh or color material."), *GetName());
 	}
-
+	OnProjectileColorInitialized(SelectedVFXColor);
 }
 
 void ARGBProjectile::BeginPlay()

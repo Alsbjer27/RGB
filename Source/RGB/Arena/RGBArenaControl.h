@@ -29,6 +29,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FRGBArenaCompletedSignature);
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FRGBArenaProgressChangedSignature, float, Progress);
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FRGBArenaResetStartedSignature);
+
 UCLASS()
 class RGB_API ARGBArenaControl : public AActor
 {
@@ -46,6 +48,9 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category = "RGB|Arena")
 	FRGBArenaCompletedSignature OnArenaCompleted;
+
+	UPROPERTY(BlueprintAssignable, Category = "RGB|Arena")
+	FRGBColorChangedSignature OnArenaResetStarted;
 
 	UPROPERTY(BlueprintAssignable, Category = "RGB|Arena")
 	FRGBArenaProgressChangedSignature OnArenaProgressChanged;

@@ -21,6 +21,8 @@ class ARGBProjectile;
 
 class UMaterialInterface;
 
+enum class ERGBPlayerAbility : uint8;
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FRGBWeaponColorChangedSignature, ERGBColor, NewColor);
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FRGBPlayerHealthChangedSignature, int32, CurrentHealth, int32, MaxHealth);
@@ -53,6 +55,8 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "RGB|Health")
 	int32 GetMaxHealth() const { return MaxHealth; }
+
+	bool GrantAbility(ERGBPlayerAbility Ability);
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
@@ -133,6 +137,9 @@ private:
 
 	UPROPERTY(Transient, VisibleInstanceOnly, Category = "RGB|Health")
 	int32 CurrentHealth = 3;
+
+	bool IsAbilityUnlocked(ERGBPlayerAbility Ability) const;
+	bool IsWeaponColorUnlocked(ERGBColor Color) const;
 
 public:	
 	// Called every frame

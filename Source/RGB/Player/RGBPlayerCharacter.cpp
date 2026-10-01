@@ -23,6 +23,8 @@
 
 #include "../Platforms/RGBJumpPad.h"
 
+#include "../Progression/RGBAbilityUnlockSubsytem.h"
+
 
 
 // Sets default values
@@ -129,6 +131,46 @@ bool ARGBPlayerCharacter::RecieveDamage(int32 DamageAmount)
 	return true;
 }
 
+bool ARGBPlayerCharacter::GrantAbility(ERGBPlayerAbility Ability)
+{
+	UGameInstance* GameInstance = GetGameInstance();
+
+	if (!IsValid(GameInstance)) {
+		return false;
+	}
+
+	URGBAbilityUnlockSubsytem* UnlockSubsystem = GameInstance->GetSubsystem<URGBAbilityUnlockSubsytem>();
+
+	if (!IsValid(UnlockSubsystem) || !UnlockSubsystem->UnlockAbility(Ability)) {
+		return false;
+	}
+
+	switch (Ability) {
+	case ERGBPlayerAbility::RedWeapon:
+		SelectedWeaponColor = ERGBColor::Red;
+		ApplyWeaponColorMaterial();
+		OnWeaponColorChanged.Broadcast(SelectedWeaponColor);
+		break;
+
+	case ERGBPlayerAbility::GreenWeapon:
+		SelectedWeaponColor = ERGBColor::Green;
+		ApplyWeaponColorMaterial();
+		OnWeaponColorChanged.Broadcast(SelectedWeaponColor);
+		break;
+
+	case ERGBPlayerAbility::BlueWeapon:
+		SelectedWeaponColor = ERGBColor::Blue;
+		ApplyWeaponColorMaterial();
+		OnWeaponColorChanged.Broadcast(SelectedWeaponColor);
+		break;
+
+	case ERGBPlayerAbility::Dash:
+		break;
+	}
+
+	return true;
+}
+
 // Called when the game starts or when spawned
 void ARGBPlayerCharacter::BeginPlay()
 {
@@ -209,6 +251,10 @@ void ARGBPlayerCharacter::EndJump()
 
 void ARGBPlayerCharacter::StartDash()
 {
+	if (!IsAbilityUnlocked(ERGBPlayerAbility::Dash)) {
+		return;
+	}
+
 	UEnhancedInputComponent* EnhancedInput = Cast<UEnhancedInputComponent>(InputComponent);
 
 	URGBCharacterMovementComponent* RGBMovement = Cast<URGBCharacterMovementComponent>(GetCharacterMovement());
@@ -259,6 +305,10 @@ void ARGBPlayerCharacter::CheckJumpInput(float DeltaTime)
 
 void ARGBPlayerCharacter::Fire()
 {
+	if (!IsWeaponColorUnlocked(SelectedWeaponColor)) {
+		return;
+	}
+
 	if (!ensureMsgf(ProjectileClass, TEXT("Assign ProjectileClass in BP_RGBPlayerCharacter"))) {
 		return;
 	}
@@ -309,35 +359,51 @@ void ARGBPlayerCharacter::Fire()
 
 void ARGBPlayerCharacter::NextWeaponColor()
 {
-	switch (SelectedWeaponColor) {
-	case ERGBColor::Red:
-		SetSelectedWeaponColor(ERGBColor::Green);
-		break;
+	const ERGBColor Colors[] = { ERGBColor::Red, ERGBColor::Green, ERGBColor::Blue };
+	int32 CurrentIndex = 0;
 
-	case ERGBColor::Green:
-		SetSelectedWeaponColor(ERGBColor::Blue);
-		break;
+	for (int32 Index = 0; Index < 3; ++Index) {
+		if (Colors[Index] == SelectedWeaponColor) {
+			CurrentIndex = Index;
+			break;
+		}
+	}
 
-	case ERGBColor::Blue:
-		SetSelectedWeaponColor(ERGBColor::Red);
-		break;
+	for (int32 Offset = 1; Offset <= 3; ++Offset) {
+		const ERGBColor Candidate = Colors[(CurrentIndex + Offset) % 3];
+
+		if (IsWeaponColorUnlocked(Candidate)) {
+			SetSelectedWeaponColor(Candidate);
+			return;
+		}
 	}
 }
 
 void ARGBPlayerCharacter::PreviousWeaponColor()
 {
-	switch (SelectedWeaponColor) {
-	case ERGBColor::Red:
-		SetSelectedWeaponColor(ERGBColor::Blue);
-		break;
+	const ERGBColor Colors[] = { ERGBColor::Red, ERGBColor::Green, ERGBColor::Blue };
+	int32 CurrentIndex = 0;
 
-	case ERGBColor::Green:
-		SetSelectedWeaponColor(ERGBColor::Red);
-		break;
+	for (int32 Index = 0; Index < 3; ++Index)
+	{
+		if (Colors[Index] == SelectedWeaponColor)
+		{
+			CurrentIndex = Index;
+			break;
+		}
+	}
 
-	case ERGBColor::Blue:
-		SetSelectedWeaponColor(ERGBColor::Green);
-		break;
+	for (int32 Offset = 1; Offset <= 3; ++Offset)
+	{
+		const int32 CandidateIndex = (CurrentIndex - Offset + 3) % 3;
+
+		const ERGBColor Candidate = Colors[CandidateIndex];
+
+		if (IsWeaponColorUnlocked(Candidate))
+		{
+			SetSelectedWeaponColor(Candidate);
+			return;
+		}
 	}
 }
 
@@ -385,6 +451,38 @@ void ARGBPlayerCharacter::ApplyWeaponColorMaterial()
 	}
 
 	GetMesh()->SetMaterial(2, SelectedMaterial);
+}
+
+bool ARGBPlayerCharacter::IsAbilityUnlocked(ERGBPlayerAbility Ability) const
+{
+	const UGameInstance* GameInstance = GetGameInstance();
+
+	if (!IsValid(GameInstance)) {
+		return false;
+	}
+
+	const URGBAbilityUnlockSubsytem* UnlockSubsystem = GameInstance->GetSubsystem<URGBAbilityUnlockSubsytem>();
+
+	return IsValid(UnlockSubsystem) && UnlockSubsystem->IsAbilityUnlocked(Ability);
+
+	return false;
+}
+
+bool ARGBPlayerCharacter::IsWeaponColorUnlocked(ERGBColor Color) const
+{
+	switch(Color) {
+	case ERGBColor::Red:
+		return IsAbilityUnlocked(ERGBPlayerAbility::RedWeapon);
+
+	case ERGBColor::Green:
+		return IsAbilityUnlocked(ERGBPlayerAbility::GreenWeapon);
+
+	case ERGBColor::Blue:
+		return IsAbilityUnlocked(ERGBPlayerAbility::BlueWeapon);
+	
+	default:
+		return false;
+	}
 }
 
 // Called every frame

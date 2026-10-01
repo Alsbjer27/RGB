@@ -40,6 +40,7 @@ void ARGBArenaControl::BeginArenaReset()
 	MatchingPlatformCount = 0;
 	CompletionPercentage = 0.0f;
 
+	OnArenaResetStarted.Broadcast();
 	OnArenaProgressChanged.Broadcast(0.0f);
 
 	for (ARGBColorPlatform* Platform : AssignedPlatforms) {
