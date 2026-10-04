@@ -37,4 +37,6 @@ private:
 
 	void InitializeActivationState();
 	void SetControlledMovementEnabled(bool bEnabled);
+
+	void ResetControlledMovementToStart();
 };

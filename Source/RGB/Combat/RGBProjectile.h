@@ -13,6 +13,8 @@ class UProjectileMovementComponent;
 
 class UMaterialInterface;
 
+class USoundBase;
+
 UCLASS()
 class RGB_API ARGBProjectile : public AActor
 {
@@ -23,7 +25,7 @@ public:
 	ARGBProjectile();
 
 	void InitializeColor(ERGBColor InColor);
-
+	
 	ERGBColor GetProjectileColor() const { return ProjectileColor; }
 
 protected:
@@ -58,6 +60,9 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Projectile|VFX")
 	FLinearColor BlueVFXColor = FLinearColor(0.02f, 0.02f, 1.0f, 1.0f);
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Projectile|Audio")
+	TObjectPtr<USoundBase> ImpactSound;
 
 private:
 	UFUNCTION()

@@ -10,6 +10,8 @@
 
 #include "../AI/RGBEnemyCharacter.h"
 
+#include "Kismet/GameplayStatics.h"
+
 // Sets default values
 ARGBProjectile::ARGBProjectile()
 {
@@ -102,6 +104,15 @@ void ARGBProjectile::BeginPlay()
 
 void ARGBProjectile::HandleProjectileStopped(const FHitResult& ImpactResult)
 {
+	if (IsValid(ImpactSound)) {
+		FVector SoundLocation = GetActorLocation();
+
+		if (ImpactResult.bBlockingHit) {
+			SoundLocation = FVector(ImpactResult.ImpactPoint);
+		}
+		UGameplayStatics::PlaySoundAtLocation(this, ImpactSound, SoundLocation);
+	}
+
 	if (bColorInitialized) {
 		if (ARGBEnemyCharacter* Enemy = Cast<ARGBEnemyCharacter>(ImpactResult.GetActor())) {
 			Enemy->RecieveColorHit(ProjectileColor);

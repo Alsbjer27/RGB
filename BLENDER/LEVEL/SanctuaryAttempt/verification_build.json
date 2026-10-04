@@ -1,0 +1,83 @@
+{
+  "source_file": "C:\\Users\\manun\\Desktop\\Spelprojekt\\RGB\\BLENDER\\LEVEL\\LEVEL_INTRO.blend",
+  "source_sha256": "b8d05d517ba1026ea413ffabbfaf8520a5f2a109e2e77e18b2946f56739ccc13",
+  "fbx_sha256": "3124b89d4ebf9efe44e33a5a1cbf07083447f01118dc03f97d6d9eb2dd65744a",
+  "all_original_objects": 44,
+  "protected_unreal_objects": 10,
+  "preserved_all_original_geometry_transforms_material_slots": true,
+  "changed_original_objects": [],
+  "original_fingerprints": {
+    "Combined_04BF457E": "cf8416ed06d699eb0029b75e24f480295fb95fbe1a75e974f6360cc1ad9cc62b",
+    "Combined_04BF457E.001": "120b1b552c3f746ae0d03137841e2b10aca54ae04020032e16ed841758cd693c",
+    "Plane": "84d80ddadf0e1a0663eb3168c1ba57975e07f7cfa2cf98b65690363833f211f2",
+    "Cube": "8010ec75a514ade8971da00b94443f4ee9786057e5e558747c9c15c0fd9ef116",
+    "Gear": "3122639e9f71c8e54914790d189ec8f3d143dd88b15202d2e372c1bfbeac5ee5",
+    "Gear.001": "414b545a9b3aba569a6332d0bedd732bcb4012fd2a24441bfd7e75d0b8fa577a",
+    "Gear.002": "25a51640c6e72a90505047d91363537724b5b227ec48f728923d746199389da4",
+    "Gear.003": "a2e48ae2428efa1dde11e5e3a083d5638b40798ef0128f763ed2f1788957de0a",
+    "Pyramid": "9f5055679fd20b5a648b7b7759ab055eddcf06c0e329f2bde85dc48200a883f1",
+    "Cylinder": "f2fc8c183f3943807fe51d72a2ac45d1644352f4d25f9b7c53d5ae7c7e02e6b8",
+    "Cube.001": "a1369bb9f8bceedc62107ab9f66b09892df626259edd9645f1a667be84a6ffed",
+    "Cube.002": "502401ddedc291bd31ca0780698486a64b58f82c509dc1a1c3fb7206c629e0d6",
+    "Gear.004": "e778c07ca5e0a7a106cb31ea73444227350a2c6120aef5694925a92af57dca3f",
+    "Combined_04BF457E.002": "be3c944993e2420997ef16f1e616337669fa4c24676928c58b74fc40a79a2a2b",
+    "Combined_04BF457E.003": "dba882eb1e58f9cc87bbe41b5a15186be14d28f1bdf8cf092aefd07c520ce273",
+    "Combined_04BF457E.004": "6e6c9a5c172a2057eb9f6c6ffd2e3c937c404e2544da2c210cc56d9419b27565",
+    "Cube.003": "29f563e997687e43fa71d90bc16e52ce0df97f4745f9630155bf441741e7b16d",
+    "Cube.004": "57bc8ae7dae098d8806b02895496a2995a18820cab35e15d4c36bf79c3ab796d",
+    "Cube.005": "b1e517bab88464a14400392dfd51a90af78915c811eaa09e60a3bed7cfe0c268",
+    "Cube.006": "899d5cac7c4a1d4e736637e08a8414dbba121232642a84c3338abdc21efa6d56",
+    "Cube.007": "abca3e1169b750aec7700859349459d2dc448eea3b950299edf882847303848c",
+    "Cube.008": "72ae0bfb492f45dbddf150e633dd0dace7c64124576dea7eefebf531df7dba39",
+    "Combined_04BF457E.005": "a44908b325018932ec3336941942003c725a74a911fcf39770ffd0b3d4891ad8",
+    "Cube.009": "1657c2f6f9e4dc8b43e04edc0dc171487cdb437fc23c68e92c295f06fba18dc6",
+    "Cube.010": "0e16e90ad04d63309b60176f35e1fb785e3539023a5f58657b3b7fdb7d033a5f",
+    "Cube.011": "09863e1ef349277dc0da0070aafb68322c783794b457d74151e9c5be6ddec5f9",
+    "Combined_04BF457E.006": "cfb040041ef2c2501ab1918f37484a4c9892f1d02171ee9e7628ebe22acae5f4",
+    "Combined_04BF457E.007": "ae43333696ed703c8eea9833c825ff73e495e413f7e811b3bf3727489eb5b5ba",
+    "Combined_04BF457E.008": "720dc487f2200cb7eddab68ab65fd3216ad22b81252dfe2e30ec26544d5037d7",
+    "Worm Gear.001": "a8cb34f6651c401839a91c1b750974a0cd8cb73c01eceead3bb41a99a0b6fcb9",
+    "Cube.013": "b417cf028e0bfc4b858fc166126c733b7da6e595105375e9c7c56999b2b398c8",
+    "Cube.014": "f8e5a4d13be3ebec6e19c9b258331f3ac056763d31fd98328ff91659bfa3f7ea",
+    "Worm Gear.002": "6cf100c34aedd176709f63fc16cb0e9cbc13b9ac2263f839a9b546a50c3bb43f",
+    "Cube.015": "6a3f93c2b29d81db5e2cfbb3a23fd16bd276134ff68b725124bbd307ae386932",
+    "Wye Joint": "0d366cb710758f7c1f9a5541a73dcf593fa3c8c6bc994554d8f9d493a769f515",
+    "Elbow Joint": "1a87bc8b1772b46fc10405e57fbc3e5fb981dbecb871363d9af03b4093860563",
+    "Cube.016": "95d7c2af86503d468b032d8c67b85d516dc63e882f443f7042fd59ef82b8a67e",
+    "Cylinder.001": "6dee19243767187d12ff5c1d983c2da5e398c0d1011a012708df5e13f9d2bcff",
+    "Elbow Joint.001": "7e15ea44da78c07c505a25c3b81149473bf673d3a3038d015fc8d1f19c8e0182",
+    "Elbow Joint.002": "2456b435e89dc1400ecbf889d54dd8f5942b5946f2c88cfff75f1afdbf324808",
+    "Landscape.001": "9743bde595a2e5f536d1c5648c837146eaaa1878eb243bac94699ef8f9bfe34d",
+    "Landscape.002": "5be4dab0888042c96492b45d7203699031aae8f8ce12c5152e5648256dcdace8",
+    "Landscape_plane": "f02fa7452d9e3c121ef2be11a4310d0bacafc7a822433de7bcb5ee0b9f224bd6",
+    "Combined_04BF457E.009": "4d197fde54be387a2b721bf506c9861195152daf10051cfc6d28a1dbbe3ad135"
+  },
+  "original_terrain_retained_hidden_collection": "02_TEMPLATE_Previous_Terrain [toggle to compare]",
+  "missing_images": [],
+  "new_meshes": 1739,
+  "new_cameras": [
+    "SAN_CAM_00_Whole_Route",
+    "SAN_CAM_01_Entrance_Perspective",
+    "SAN_CAM_02_Aqueduct_Perspective",
+    "SAN_CAM_03_Threshold_Perspective",
+    "SAN_CAM_04_Sanctuary_Perspective",
+    "SAN_CAM_05_Depth_Layers"
+  ],
+  "blender": "5.2.2 LTS",
+  "units": "METRIC",
+  "source_contains_camera": false,
+  "depth_layers": {
+    "10_BG_NEAR | Y 14 to 65": [
+      14,
+      65
+    ],
+    "20_BG_MIDDLE | Y 65 to 190": [
+      65,
+      190
+    ],
+    "30_BG_FAR | Y 190 to 650": [
+      190,
+      650
+    ]
+  }
+}

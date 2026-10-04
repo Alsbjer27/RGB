@@ -11,6 +11,8 @@
 #include "../AI/RGBEnemyCharacter.h"
 #include "Engine/World.h"
 
+#include "Kismet/GameplayStatics.h"
+
 // Sets default values
 ARGBArenaControl::ARGBArenaControl()
 {
@@ -125,6 +127,16 @@ void ARGBArenaControl::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 void ARGBArenaControl::HandlePlatformColorChanged(ERGBColor PreviousColor, ERGBColor NewColor)
 {
+	if (bResetInProgress || bCompleted) {
+		return;
+	}
+
+	USoundBase* ResultSound = NewColor == RequiredColor ? CorrectColorSound.Get() : WrongColorSound.Get();
+
+	if (IsValid(ResultSound)) {
+		UGameplayStatics::PlaySoundAtLocation(this, ResultSound, GetActorLocation());
+	}
+
 	UpdateProgress();
 }
 
@@ -204,6 +216,10 @@ void ARGBArenaControl::CompleteArena()
 	}
 
 	bCompleted = true;
+
+	if (IsValid(ArenaCompletedSound)) {
+		UGameplayStatics::PlaySoundAtLocation(this, ArenaCompletedSound, GetActorLocation());
+	}
 
 	for (ARGBColorPlatform* Platform : AssignedPlatforms) {
 		if (IsValid(Platform)) {

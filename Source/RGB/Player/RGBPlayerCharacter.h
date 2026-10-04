@@ -21,6 +21,8 @@ class ARGBProjectile;
 
 class UMaterialInterface;
 
+class USoundBase;
+
 enum class ERGBPlayerAbility : uint8;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FRGBWeaponColorChangedSignature, ERGBColor, NewColor);
@@ -105,6 +107,9 @@ protected:
 	TSubclassOf<ARGBProjectile> ProjectileClass;
 
 	void Fire();
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Combat|Audio")
+	TObjectPtr<USoundBase> FireSound;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Input")
 	TObjectPtr<UInputAction> NextWeaponColorAction;

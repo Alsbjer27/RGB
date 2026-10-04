@@ -25,6 +25,8 @@
 
 #include "../Progression/RGBAbilityUnlockSubsytem.h"
 
+#include "Kismet/GameplayStatics.h"
+
 
 
 // Sets default values
@@ -82,10 +84,10 @@ void ARGBPlayerCharacter::FellOutOfWorld(const UDamageType& DamageType)
 {
 	ARGBGameMode* GameMode = GetWorld()->GetAuthGameMode<ARGBGameMode>();
 
-	if (GameMode && Controller) {
-		if (GameMode->RespawnPlayer(Controller)) {
-			return;
-		}
+	if (IsValid(GameMode) && IsValid(Controller))
+	{
+		GameMode->StartRespawnTransition(Controller);
+		return;
 	}
 
 	Super::FellOutOfWorld(DamageType);
@@ -346,6 +348,10 @@ void ARGBPlayerCharacter::Fire()
 
 	if (IsValid(Projectile)) {
 		Projectile->InitializeColor(SelectedWeaponColor);
+
+		if (IsValid(FireSound)) {
+			UGameplayStatics::PlaySoundAtLocation(this, FireSound, SpawnLocation);
+		}
 	}
 	else {
 		UE_LOG(

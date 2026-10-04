@@ -18,7 +18,8 @@
 ARGBArenaCameraZone::ARGBArenaCameraZone()
 {
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = false;
 
 	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
 	SetRootComponent(SceneRoot);
@@ -39,6 +40,15 @@ ARGBArenaCameraZone::ARGBArenaCameraZone()
 	ArenaCamera->ProjectionMode = ECameraProjectionMode::Perspective;
 	ArenaCamera->FieldOfView = 60.0f;
 	ArenaCamera->bUsePawnControlRotation = false;
+}
+
+void ARGBArenaCameraZone::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	if (bArenaViewActive && CameraTrackingMode != ERGBArenaCameraTrackingMode::Fixed) {
+		UpdatePlayerFollow(DeltaTime, false);
+	}
 }
 
 bool ARGBArenaCameraZone::ContainWorldLocation(const FVector& WorldLocation) const
@@ -95,6 +105,18 @@ void ARGBArenaCameraZone::UpdateCameraZone()
 	TrackedController = PlayerController;
 
 	if (bPlayerInside) {
+
+		if (CameraTrackingMode != ERGBArenaCameraTrackingMode::Fixed) {
+			if (!bArenaViewActive || bPlayerChanged) {
+				UpdatePlayerFollow(0.0f, true);
+			}
+
+			SetActorTickEnabled(true);
+		}
+		else {
+			SetActorTickEnabled(false);
+		}
+
 		if (!bArenaViewActive || bPlayerChanged) {
 			PlayerController->SetViewTargetWithBlend(this, BlendDuration, VTBlend_EaseInOut, 2.0f, true);
 			bArenaViewActive = true;
@@ -103,5 +125,46 @@ void ARGBArenaCameraZone::UpdateCameraZone()
 	else if (bArenaViewActive) {
 		PlayerController->SetViewTargetWithBlend(Player, BlendDuration, VTBlend_EaseInOut, 2.0f, true);
 		bArenaViewActive = false;
+		SetActorTickEnabled(false);
 	}
+}
+
+void ARGBArenaCameraZone::UpdatePlayerFollow(float DeltaTime, bool bSnapImmediately)
+{
+	const APawn* Player = TrackedPawn.Get();
+
+	if (!IsValid(Player) || !IsValid(ArenaCamera))
+	{
+		return;
+	}
+
+	FVector CameraLocation = ArenaCamera->GetComponentLocation();
+	const FVector PlayerLocation = Player->GetActorLocation();
+
+	const float TargetZ = PlayerLocation.Z + VerticalFollowOffset;
+
+	if (bSnapImmediately || VerticalFollowSpeed <= 0.0f)
+	{
+		CameraLocation.Z = TargetZ;
+	}
+	else
+	{
+		CameraLocation.Z = FMath::FInterpTo(CameraLocation.Z, TargetZ, DeltaTime, VerticalFollowSpeed);
+	}
+
+	if (CameraTrackingMode == ERGBArenaCameraTrackingMode::FollowPlayerXZ)
+	{
+		const float TargetX = PlayerLocation.X + HorizontalFollowOffset;
+
+		if (bSnapImmediately || HorizontalFollowSpeed <= 0.0f)
+		{
+			CameraLocation.X = TargetX;
+		}
+		else
+		{
+			CameraLocation.X = FMath::FInterpTo(CameraLocation.X, TargetX, DeltaTime,HorizontalFollowSpeed);
+		}
+	}
+
+	ArenaCamera->SetWorldLocation(CameraLocation);
 }

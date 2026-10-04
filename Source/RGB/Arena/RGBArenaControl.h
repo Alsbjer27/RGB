@@ -13,6 +13,7 @@ class USceneComponent;
 class ARGBArenaCameraZone;
 class UTextRenderComponent;
 class ARGBEnemyCharacter;
+class USoundBase;
 
 USTRUCT()
 struct FRGBArenaEnemySpawnRecord {
@@ -81,6 +82,15 @@ protected:
 
 	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "RGB|Arena")
 	TObjectPtr<ARGBArenaCameraZone> ArenaCameraZone;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Arena|Audio")
+	TObjectPtr<USoundBase> CorrectColorSound;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Arena|Audio")
+	TObjectPtr<USoundBase> WrongColorSound;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Arena|Audio")
+	TObjectPtr<USoundBase> ArenaCompletedSound;
 
 private:
 	UFUNCTION()

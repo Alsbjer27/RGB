@@ -21,6 +21,13 @@ enum class ERGBArenaViewMode : uint8
 	FlatPerspective
 };
 
+UENUM(BlueprintType)
+enum class ERGBArenaCameraTrackingMode : uint8 {
+	Fixed,
+	FollowPlayerZ,
+	FollowPlayerXZ
+};
+
 UCLASS()
 class RGB_API ARGBArenaCameraZone : public AActor
 {
@@ -29,6 +36,8 @@ class RGB_API ARGBArenaCameraZone : public AActor
 public:	
 	// Sets default values for this actor's properties
 	ARGBArenaCameraZone();
+
+	virtual void Tick(float DeltaTime) override;
 
 	ERGBArenaViewMode GetArenaViewMode() const { return ArenaViewMode; }
 
@@ -53,6 +62,20 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Camera")
 	ERGBArenaViewMode ArenaViewMode = ERGBArenaViewMode::UseManagerDefault;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Camera")
+	ERGBArenaCameraTrackingMode CameraTrackingMode = ERGBArenaCameraTrackingMode::Fixed;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Camera")
+	float VerticalFollowOffset = 120.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Camera", meta = (ClampMin = "0.0"))
+	float VerticalFollowSpeed = 5.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Camera", meta = (EditCondition = "CameraTrackingMode == ERGBArenaCameraTrackingMode::FollowPlayerXZ"))
+	float HorizontalFollowOffset = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Camera", meta = (ClampMin = "0.0", EditCondition = "CameraTrackingMode == ERGBArenaCameraTrackingMode::FollowPlayerXZ"))
+	float HorizontalFollowSpeed = 5.0f;
+
 private:
 	void UpdateCameraZone();
 
@@ -62,4 +85,6 @@ private:
 	TWeakObjectPtr<APawn> TrackedPawn;
 
 	bool bArenaViewActive = false;
+
+	void UpdatePlayerFollow(float DeltaTime, bool bSnapImmediately);
 };

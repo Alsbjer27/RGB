@@ -1,0 +1,102 @@
+{
+  "all_original_objects_checked": 44,
+  "missing_objects": [],
+  "changed_objects": [],
+  "modifier_lists_changed": [],
+  "source_blend_byte_identical": true,
+  "supplied_fbx_byte_identical": true,
+  "all_file_textures_packed": true,
+  "images": [
+    {
+      "name": "HexPanel_ColorPlatform_Bump",
+      "packed": true
+    },
+    {
+      "name": "HexPanel_Platform_Normal",
+      "packed": true
+    },
+    {
+      "name": "HexPanel_Platform_Normal.001",
+      "packed": true
+    },
+    {
+      "name": "MountainDirt_COLOR.png",
+      "packed": true
+    },
+    {
+      "name": "MountainDirt_DISP.png",
+      "packed": true
+    },
+    {
+      "name": "MountainDirt_NRM.png",
+      "packed": true
+    },
+    {
+      "name": "MountainDirt_OCC.png",
+      "packed": true
+    },
+    {
+      "name": "MountainDirt_SPEC.png",
+      "packed": true
+    }
+  ],
+  "active_camera": "SAN_CAM_00_Whole_Route",
+  "new_mesh_base_polygons": 38058,
+  "background_bounds": {
+    "10_BG_NEAR | Y 14 to 65": {
+      "objects": 358,
+      "min": [
+        -312.72857666015625,
+        14.92788314819336,
+        -30.0
+      ],
+      "max": [
+        265.99761962890625,
+        63.16994094848633,
+        101.0
+      ]
+    },
+    "20_BG_MIDDLE | Y 65 to 190": {
+      "objects": 1008,
+      "min": [
+        -273.2499084472656,
+        72.0,
+        -45.0
+      ],
+      "max": [
+        308.7126159667969,
+        188.11415100097656,
+        170.0
+      ]
+    },
+    "30_BG_FAR | Y 190 to 650": {
+      "objects": 40,
+      "min": [
+        -902.3735961914062,
+        190.0,
+        -48.0
+      ],
+      "max": [
+        902.8364868164062,
+        630.0,
+        223.40037536621094
+      ]
+    },
+    "40_FOREGROUND | below route only": {
+      "objects": 6,
+      "min": [
+        -309.4444885253906,
+        -31.308162689208984,
+        -28.0
+      ],
+      "max": [
+        282.5433654785156,
+        -16.491182327270508,
+        3.668581008911133
+      ]
+    }
+  },
+  "blender": "5.2.2 LTS",
+  "changed_transform_details": {},
+  "passed": true
+}

@@ -36,7 +36,8 @@ void URGBPathMovementComponent::BeginPlay()
 		Root->SetMobility(EComponentMobility::Movable);
 	}
 
-	DistanceAlongPath = 0.0f;
+	const float PathLength = MovementPath->GetPathSpline()->GetSplineLength();
+	DistanceAlongPath = PathLength * FMath::Clamp(StartingPathProgress, 0.0f, 1.0f);
 	MovementDirection = 1.0f;
 	
 	if (bSnapToPathStart) {
@@ -95,16 +96,41 @@ void URGBPathMovementComponent::TickComponent(float DeltaTime, ELevelTick TickTy
 
 	DistanceAlongPath += MovementSpeed * MovementDirection * DeltaTime;
 
-	while (DistanceAlongPath > PathLength || DistanceAlongPath < 0.0f) {
-		if (DistanceAlongPath > PathLength) {
-			DistanceAlongPath = PathLength - (DistanceAlongPath - PathLength);
-			MovementDirection = -1.0f;
+	switch (MovementMode) {
+	case ERGBPathMovementMode::PingPong:
+		while (DistanceAlongPath > PathLength || DistanceAlongPath < 0.0f) {
+			if (DistanceAlongPath > PathLength) {
+				DistanceAlongPath = PathLength - (DistanceAlongPath - PathLength);
+				MovementDirection = -1.0f;
+			}
+			else {
+				DistanceAlongPath = -DistanceAlongPath;
+				MovementDirection = 1.0f;
+			}
 		}
-		else {
-			DistanceAlongPath = -DistanceAlongPath;
-			MovementDirection = 1.0f;
+		break;
+	case ERGBPathMovementMode::OneWay:
+		if (DistanceAlongPath >= PathLength) {
+			DistanceAlongPath = PathLength;
+			ApplyPathTransform();
+			SetMovementEnabled(false);
+			return;
 		}
+
+		DistanceAlongPath = FMath::Fmod(DistanceAlongPath, PathLength);
+		break;
+
+	case ERGBPathMovementMode::Loop:
+		DistanceAlongPath = FMath::Fmod(DistanceAlongPath, PathLength);
+
+		if (DistanceAlongPath < 0.0f) {
+			DistanceAlongPath += PathLength;
+		}
+
+		MovementDirection = 1.0f;
+		break;
 	}
+
 
 	ApplyPathTransform();
 }
@@ -120,3 +146,23 @@ bool URGBPathMovementComponent::IsMovementEnabled() const
 	return bMovementEnabled;
 }
 
+void URGBPathMovementComponent::ResetToPathStart()
+{
+	MovementDirection = 1.0f;
+
+	if (IsValid(MovementPath) && IsValid(MovementPath->GetPathSpline())) {
+		const float PathLength = MovementPath->GetPathSpline()->GetSplineLength();
+		DistanceAlongPath = PathLength * FMath::Clamp(StartingPathProgress, 0.0f, 1.0f);
+		ApplyPathTransform();
+	}
+}
+
+void URGBPathMovementComponent::SetMovementPath(ARGBPlatformPath* NewMovementPath)
+{
+	MovementPath = NewMovementPath;
+}
+
+void URGBPathMovementComponent::SetStartingPathProgress(float NewProgress)
+{
+	StartingPathProgress = FMath::Clamp(NewProgress, 0.0f, 1.0f);
+}

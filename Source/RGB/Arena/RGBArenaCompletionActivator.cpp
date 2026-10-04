@@ -66,6 +66,21 @@ void ARGBArenaCompletionActivator::SetControlledMovementEnabled(bool bEnabled)
 	}
 }
 
+void ARGBArenaCompletionActivator::ResetControlledMovementToStart()
+{
+	for (AActor* ControlledActor : ControlledActors) {
+		if (!IsValid(ControlledActor)) {
+			continue;
+		}
+
+		URGBPathMovementComponent* Movement = ControlledActor->FindComponentByClass<URGBPathMovementComponent>();
+
+		if (IsValid(Movement)) {
+			Movement->ResetToPathStart();
+		}
+	}
+}
+
 void ARGBArenaCompletionActivator::HandleArenaCompleted()
 {
 	SetControlledMovementEnabled(true);
@@ -74,4 +89,5 @@ void ARGBArenaCompletionActivator::HandleArenaCompleted()
 void ARGBArenaCompletionActivator::HandleArenaResetStarted()
 {
 	SetControlledMovementEnabled(false);
+	ResetControlledMovementToStart();
 }

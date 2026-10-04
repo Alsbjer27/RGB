@@ -11,7 +11,7 @@
 ARGBMovingPlatform::ARGBMovingPlatform()
 {
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
-	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bCanEverTick = false;
 	
 	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
 	SetRootComponent(SceneRoot);
@@ -25,4 +25,15 @@ ARGBMovingPlatform::ARGBMovingPlatform()
 	PlatformMesh->SetSimulatePhysics(false);
 
 	PathMovement = CreateDefaultSubobject<URGBPathMovementComponent>(TEXT("PathMovement"));
+	RotationMovement = CreateDefaultSubobject<URGBRotationComponent>(TEXT("RotationMovement"));
+}
+
+void ARGBMovingPlatform::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+
+	if (IsValid(PathMovement)) {
+		PathMovement->SetMovementPath(MovementPath);
+		PathMovement->SetStartingPathProgress(StartingPathProgress);
+	}
 }

@@ -15,6 +15,11 @@
 
 #include "../Arena/RGBArenaControl.h"
 
+#include "../Progression/RGBCheckpoint.h"
+#include "Camera/PlayerCameraManager.h"
+#include "GameFramework/PlayerController.h"
+#include "TimerManager.h"
+
 ARGBGameMode::ARGBGameMode()
 {
 	DefaultPawnClass = ARGBPlayerCharacter::StaticClass();
@@ -26,12 +31,18 @@ bool ARGBGameMode::RespawnPlayer(AController* PlayerController)
 	if (!IsValid(PlayerController)) {
 		return false;
 	}
+	
+	const ARGBCheckpoint* Checkpoint = ActiveCheckpoint.Get();
+	AActor* PlayerStart = nullptr;
 
-	AActor* SpawnPoint = FindPlayerStart(PlayerController);
+	if (!IsValid(Checkpoint)) {
+		PlayerStart = FindPlayerStart(PlayerController);
 
-	if (!IsValid(SpawnPoint)) {
-		UE_LOG(LogTemp, Error, TEXT("Respawn failed: no Player Start found."));
-		return false;
+		if (!IsValid(PlayerStart))
+		{
+			UE_LOG(LogTemp, Error, TEXT("Respawn failed: no checkpoint or Player Start found."));
+			return false;
+		}
 	}
 
 	if (APawn* OldPawn = PlayerController->GetPawn()) {
@@ -39,18 +50,18 @@ bool ARGBGameMode::RespawnPlayer(AController* PlayerController)
 		OldPawn->Destroy();
 	}
 
-	RestartPlayerAtPlayerStart(PlayerController, SpawnPoint);
+	if (IsValid(Checkpoint)) {
+		RestartPlayerAtTransform(PlayerController, Checkpoint->GetRespawnTransform());
+	}
+	else {
+		RestartPlayerAtPlayerStart(PlayerController, PlayerStart);
+	}
 
 	const bool bRespawnSucceeded = IsValid(PlayerController->GetPawn());
 
-	if (!bRespawnSucceeded)
-	{
-		UE_LOG(
-			LogTemp,
-			Error,
-			TEXT("Respawn failed: check the pawn class and spawn clearance."));
+	if (!bRespawnSucceeded) {
+		UE_LOG(LogTemp,Error, TEXT("Respawn failed: check pawn class and spawn clearance."));
 	}
-
 	return bRespawnSucceeded;
 }
 
@@ -88,4 +99,60 @@ bool ARGBGameMode::RestartMechanicsTest(AController* PlayerController)
 	}
 
 	return true;
+}
+
+void ARGBGameMode::SetActiveCheckpoint(ARGBCheckpoint* Checkpoint)
+{
+	if (IsValid(Checkpoint)) {
+		ActiveCheckpoint = Checkpoint;
+	}
+}
+
+void ARGBGameMode::StartRespawnTransition(AController* PlayerController)
+{
+	if (bRespawnTransitionActive || !IsValid(PlayerController)) {
+		return;
+	}
+
+	APlayerController* LocalPlayerController = Cast<APlayerController>(PlayerController);
+
+	if (!IsValid(LocalPlayerController)) {
+		RespawnPlayer(PlayerController);
+		return;
+	}
+
+	bRespawnTransitionActive = true;
+	PendingRespawnController = PlayerController;
+
+	LocalPlayerController->SetIgnoreMoveInput(true);
+	LocalPlayerController->SetIgnoreLookInput(true);
+
+	if (IsValid(LocalPlayerController->PlayerCameraManager)) {
+		LocalPlayerController->PlayerCameraManager->StartCameraFade(0.0f, 1.0f, RespawnFadeOutDuration, FLinearColor::Black, false, true);
+	}
+
+	const float DelayBeforeRespawn = RespawnFadeOutDuration + RespawnBlackDelay;
+	GetWorldTimerManager().SetTimer(RespawnTimerHandle, this, &ARGBGameMode::CompleteRespawnTransition, DelayBeforeRespawn, false);
+}
+
+void ARGBGameMode::CompleteRespawnTransition()
+{
+	AController* PlayerController = PendingRespawnController.Get();
+	APlayerController* LocalPlayerController = Cast<ARGBPlayerController>(PlayerController);
+
+	if (IsValid(PlayerController)) {
+		RespawnPlayer(PlayerController);
+	}
+
+	if (IsValid(LocalPlayerController)) {
+		if (IsValid(LocalPlayerController->PlayerCameraManager)) {
+			LocalPlayerController->PlayerCameraManager->StartCameraFade(1.0f, 0.0f, RespawnFadeInDuration, FLinearColor::Black, false, false);
+		}
+
+		LocalPlayerController->SetIgnoreMoveInput(false);
+		LocalPlayerController->SetIgnoreLookInput(false);
+	}
+
+	PendingRespawnController.Reset();
+	bRespawnTransitionActive = false;
 }
