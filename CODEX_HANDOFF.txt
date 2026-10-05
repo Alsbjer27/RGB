@@ -1,5 +1,60 @@
 RGB - CROSS-PC CODEX HANDOFF
-Last updated: 2026-10-01 (Europe/Stockholm)
+Last updated: 2026-10-05 (Europe/Stockholm)
+
+CURRENT HANDOFF - OCTOBER 5 (PLAYER FOOTSTEPS AND TELEPORTER AOE WARNING)
+
+SCOPE OF THIS SECTION
+- This section records only work completed or confirmed during the October 5
+  audio/teleporter-VFX session. Do not infer that it replaces or documents the
+  unrecorded work the user performed on another PC.
+- Current inspected HEAD is 8cdeecd, "Audio component implemented, platform
+  movement & rotation, landscape, Completion activators". The working tree is
+  dirty. Preserve all existing user changes and reconcile source/assets before
+  editing or committing.
+
+PLAYER JUMP, LANDING AND RUNNING AUDIO
+- ARGBPlayerCharacter has uncommitted C++ additions for JumpSound, LandingSound
+  and MinimumLandingSpeed (default 250) in RGBPlayerCharacter.h. Landed captures
+  vertical speed before Super::Landed, skips normal landing playback for
+  ARGBJumpPad, then plays LandingSound only when the captured speed is at least
+  MinimumLandingSpeed. OnJumped_Implementation plays JumpSound after calling
+  Super. Build/PIE verification of these new jump/landing hooks was not reported
+  in this session.
+- Landing assets are under Content/RGB/Audio/Movement/Player/Landing/:
+  LandingSound_01 through LandingSound_05 plus SC_PlayerLand. Their assignment
+  in BP_RGBPlayerCharacter is not confirmed in this handoff.
+- The user rendered the running step sounds without the continuous gear-loop
+  track. Eight imported one-shot WAVs/assets, Running_01 through Running_08,
+  are under Content/RGB/Audio/Movement/Player/Running/.
+- SC_PlayerRunning contains eight Wave Player inputs connected to a Random node.
+  It initially always played Running_01 because the Random node weights were not
+  configured. The user corrected the weights so variation now works. Enable
+  Randomize Without Replacement and keep every input weight non-zero when
+  revisiting this cue.
+- The player walk/run Animation Sequence
+  Content/RGB/Characters/PLAYER2/Animations/newlyanimatedrobot4K_Armature_walk_
+  contains two SC_PlayerRunning Play Sound notifies, approximately frame 3 and
+  frame 20 of the 33-frame loop, placed at the two foot contacts. The user
+  reported this setup works satisfactorily in PIE after timing adjustment.
+- If a stray footstep returns when starting/stopping movement, check the Play
+  Sound notify's Advanced settings for Trigger Weight Threshold and use about
+  0.5 if exposed. Do not lower Notify Trigger Chance; it randomly removes valid
+  steps. A future Modulator node after Random can provide subtle global pitch
+  variation for the cue.
+
+TELEPORTER AOE WARNING VFX
+- New Content/RGB/VFX/Teleporter/NS_TeleporterAoEWarning.uasset exists. It was
+  created from the projectile impact-ring work, reduced to a camera-facing ring
+  warning, and resized in Niagara to a scale the user approved.
+- Intended eventual gameplay shape: an X/Z circular radius centered on the
+  teleporter while ignoring Y camera depth. The later C++ range check should
+  copy the player-enemy difference, set Difference.Y=0, then compare its squared
+  size with AoERadius squared.
+- The warning VFX remains presentation-only. No teleporter AoE damage logic,
+  attack timing or C++ activation path has been implemented in this session.
+  It has not been confirmed attached to BP_RGBEnemyTeleporter yet. When resumed,
+  add a Niagara component named AoEWarningVFX, assign this system, attach it to
+  the Capsule/root at relative location (0,0,0), and set Auto Activate=false.
 
 CURRENT HANDOFF - OCTOBER 1 (ABILITY PICKUPS AND ARENA OUTPUTS)
 

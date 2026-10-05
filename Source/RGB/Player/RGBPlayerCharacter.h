@@ -111,6 +111,21 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Combat|Audio")
 	TObjectPtr<USoundBase> FireSound;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Movement|Audio")
+	TObjectPtr<USoundBase> JumpSound;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Movement|Audio")
+	TObjectPtr<USoundBase> LandingSound;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Movement|Audio", meta = (ClampMin = "0.0"))
+	float MinimumLandingSpeed = 250.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Movement|Audio")
+	TObjectPtr<USoundBase> DashSound;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Input|Audio")
+	TObjectPtr<USoundBase> CycleWeaponSound;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Input")
 	TObjectPtr<UInputAction> NextWeaponColorAction;
 

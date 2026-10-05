@@ -184,6 +184,8 @@ void ARGBPlayerCharacter::BeginPlay()
 
 void ARGBPlayerCharacter::Landed(const FHitResult& Hit)
 {
+	const float LandingSpeed = FMath::Abs(GetVelocity().Z);
+
 	Super::Landed(Hit);
 
 	if (ARGBJumpPad* JumpPad = Cast<ARGBJumpPad>(Hit.GetActor())) {
@@ -208,6 +210,10 @@ void ARGBPlayerCharacter::Landed(const FHitResult& Hit)
 		return;
 	}
 
+	if (LandingSpeed >= MinimumLandingSpeed && IsValid(LandingSound)) {
+		UGameplayStatics::PlaySoundAtLocation(this, LandingSound, GetActorLocation());
+	}
+
 	if (ARGBColorPlatform* Platform = Cast<ARGBColorPlatform>(Hit.GetActor())) {
 		if (URGBColorComponent* Color = Platform->GetColorComponent()) {
 			Color->AdvanceColor();
@@ -218,6 +224,10 @@ void ARGBPlayerCharacter::Landed(const FHitResult& Hit)
 void ARGBPlayerCharacter::OnJumped_Implementation()
 {
 	Super::OnJumped_Implementation();
+
+	if (IsValid(JumpSound)) {
+		UGameplayStatics::PlaySoundAtLocation(this, JumpSound, GetActorLocation());
+	}
 
 	if (ARGBColorPlatform* Platform = JumpSourcePlatform.Get()) {
 		Platform->HandlePlayerJumpOff();
@@ -271,6 +281,10 @@ void ARGBPlayerCharacter::StartDash()
 	if (RGBMovement->TryStartAirDash(DashDirection)) {
 		LastFacingDirection = DashDirection;
 		BufferedJumpExpiresAt = -1.0f;
+	}
+
+	if (IsValid(DashSound)) {
+		UGameplayStatics::PlaySoundAtLocation(this, DashSound, GetActorLocation());
 	}
 }
 
@@ -428,6 +442,10 @@ void ARGBPlayerCharacter::SetSelectedWeaponColor(ERGBColor NewColor)
 	SelectedWeaponColor = NewColor;
 	ApplyWeaponColorMaterial();
 	OnWeaponColorChanged.Broadcast(SelectedWeaponColor);
+
+	if (IsValid(CycleWeaponSound)) {
+		UGameplayStatics::PlaySoundAtLocation(this, CycleWeaponSound, GetActorLocation());
+	}
 }
 
 void ARGBPlayerCharacter::ApplyWeaponColorMaterial()
