@@ -1,6 +1,166 @@
 RGB - CROSS-PC CODEX HANDOFF
 Last updated: 2026-10-05 (Europe/Stockholm)
 
+CURRENT HANDOFF - OCTOBER 5 (PLATFORMS, CAMERA TRACKING, CHECKPOINTS AND ARENA AUDIO)
+
+SESSION SCOPE AND CHECKOUT
+- Current inspected HEAD/origin is 6c3c9c3, "Audio work done", on main. The
+  working tree contains newer source and Unreal asset work. A complete Git
+  status/diff remains unavailable to Codex because the sandbox cannot create
+  Git LFS temporary files under .git/lfs/tmp. Preserve all current user work.
+- This section reconciles source inspected on the current PC with work the user
+  completed on the other PC. The user typed the gameplay changes with Codex
+  guidance and reported the build and PIE results below. Codex did not run an
+  Unreal build or independently inspect binary Blueprint/map contents.
+
+MOVING AND ROTATING PLATFORMS
+- URGBPathMovementComponent supports PingPong, OneWay and Loop modes, movement
+  enable/disable, reset to path start, optional spline rotation and normalized
+  StartingPathProgress. ARGBMovingPlatform exposes MovementPath and
+  StartingPathProgress on the actor and pushes them into the native component
+  from OnConstruction. This avoids editing nested inherited native-component
+  properties that previously triggered unmatched PreEditChange/PostEditChange
+  editor assertions.
+- Multiple platform instances can share one path and use different normalized
+  starting progress values. The user verified shared-path spacing, PingPong,
+  OneWay and closed-loop movement. Closed loop splines should use Linear spline
+  points when straight edges/corners are intended.
+- URGBRotationComponent is attached to ARGBMovingPlatform and supports
+  Continuous and Stepped rotation with configurable axis, speed, step angle and
+  delay. The user confirmed stationary rotation and simultaneous translation
+  plus rotation work. Keep FollowPathRotation disabled when the rotation
+  component should own platform orientation.
+- Platforms with Start Active enabled move immediately unless an arena/color
+  activator controls them and disables them. Arena-controlled platforms start,
+  stop and reset through the existing activation system.
+
+ARENA CAMERA TRACKING
+- ARGBArenaCameraZone now supports Fixed, FollowPlayerZ and FollowPlayerXZ.
+  Follow modes preserve the existing perspective/flat-perspective interpolation
+  and keep camera Y fixed while updating the configured world axes with offsets
+  and interpolation speeds. The Tick condition correctly runs for either follow
+  mode. The user reported successful builds while adding Z and then X tracking.
+
+CHECKPOINT AND RESPAWN TRANSITION
+- New ARGBCheckpoint owns an ActivationTrigger, a separately placeable
+  RespawnPoint with direction arrow, and a separately placeable RespawnTrigger.
+  Each placed checkpoint can therefore cover a fall region at its own height.
+- Crossing ActivationTrigger sets the active checkpoint in ARGBGameMode.
+  Entering RespawnTrigger sets that checkpoint and requests a respawn transition.
+  Respawn uses the RespawnPoint transform; when no checkpoint is active it falls
+  back to PlayerStart.
+- ARGBGameMode::StartRespawnTransition ignores duplicate requests, disables
+  player movement/look input, fades the PlayerCameraManager to black, waits for
+  configurable RespawnFadeOutDuration plus RespawnBlackDelay, respawns, fades
+  back in using RespawnFadeInDuration and restores input.
+- ARGBPlayerCharacter::FellOutOfWorld routes global Kill Z through the same fade
+  transition. The character is deliberately allowed to continue falling during
+  the fade. An earlier movement-disable block made the pawn appear to land on
+  the query-only fall trigger and was removed. The user reported the final
+  checkpoint placement, fall trigger, fade and respawn behavior works well.
+- Keep RespawnPoint outside RespawnTrigger so the newly spawned pawn does not
+  immediately request another respawn. World Kill Z remains a final fallback.
+
+ARENA RESULT AUDIO - CURRENT OPEN ISSUE
+- ARGBArenaControl exposes CorrectColorSound, WrongColorSound and
+  ArenaCompletedSound as EditDefaultsOnly sound properties. These are asset
+  properties under RGB|Arena|Audio, not Audio Components in the Components tree.
+- Source currently calls PlaySoundAtLocation at the ArenaControl actor location
+  for correct/wrong color feedback and arena completion. The user reports the
+  platform result sounds are not heard after assigning them in the
+  RGBArenaControl Blueprint class.
+- First verify the placed level actor is an instance of BP_RGBArenaControl and
+  inherits the assigned class defaults. An older native ARGB ArenaControl actor
+  will not receive Blueprint default assignments and should be replaced, with
+  its required color, platform/enemy arrays and camera-zone reference restored.
+- If the placed actor is the correct Blueprint class and arena progress changes
+  prove HandlePlatformColorChanged runs, replace the arena feedback calls with
+  UGameplayStatics::PlaySound2D so attenuation/distance from the ArenaControl
+  actor cannot suppress them. This proposed source change has not yet been made
+  or tested.
+
+CURRENT HANDOFF - OCTOBER 5 (RUN HEIGHT, FAB LANDSCAPE/GRASS, WATER MATERIAL)
+
+SESSION SCOPE AND CHECKOUT
+- This section records editor guidance and results reported by the user during
+  the October 5 animation/material session. Codex did not directly edit Unreal
+  binary assets or run PIE during this session.
+- Current inspected HEAD is 6c3c9c3. A complete Git status could not be read
+  because Git LFS could not create a temporary file under .git/lfs/tmp in the
+  sandbox. Treat the working tree as dirty and preserve all existing user work.
+
+RUN-ONLY PLAYER HEIGHT CORRECTION
+- The current running animation appeared to float above the ground while the
+  idle height was already correct. The user updated the player Animation
+  Blueprint after the PlayerLocomotion state machine with this pose chain:
+  Local To Component -> Transform (Modify) Bone -> Component To Local -> Output.
+- The skeleton uses generated Blender bone names; Bone_007 is the top-level root
+  used by Transform (Modify) Bone. Translation mode is Add to Existing and
+  translation space is Component Space, with a negative Z value tuned by the
+  user.
+- The node Alpha is driven by Ground Speed through Map Range Clamped: input
+  range 5..100, output range 0..1. This preserves idle height and smoothly
+  applies the downward offset while moving. The user reported that the final
+  tuned result works perfectly.
+
+FAB STYLIZED LANDSCAPE AND GRASS PACK
+- The user added the Fab pack "Stylized Landscape and Grass" to the correct RGB
+  project from the Fab window inside Unreal rather than the stale same-named 5.5
+  project shown by the external project picker.
+- Imported content is visible under
+  Content/RGB/Imported/StylizedGrassByMayu. Important folders include 00_Levels,
+  Grass_01, Landscape, RoundedGrass and Shared_Assets.
+- MI_StylizedWorld_Landscape_Inst is assigned to the Landscape actor in L_INTRO.
+  The black material-instance preview sphere is expected for this landscape
+  material because the preview has no landscape layer weights.
+- The material exposes five Target Layers and the supplied existing Layer Info
+  assets are assigned: Grass_LayerInfo, RemoveLandscapeGrass_LayerInfo,
+  Grass2_LayerInfo, Grass3_LayerInfo and Dirt_LayerInfo. The single Landscape
+  edit layer is visible, unlocked and has Alpha 1.0. RemoveLandscapeGrass has
+  Subtractive Blend enabled; the visual Grass/Grass2/Grass3/Dirt layers should
+  keep it disabled.
+- Grass was filled successfully and procedural grass appears on the landscape.
+  The user replaced the current LGT_Grass_01 variety mesh with the pack's rounded
+  grass mesh and reported preferring its appearance. Exact saved density, scale
+  and cull-distance values were not reported; inspect the asset before retuning.
+- Density belongs in the Landscape Grass Type Grass Varieties, not paint brush
+  strength. Suggested starting density for the larger rounded clumps was 300-600.
+  Suggested distance test was Start Cull Distance 15000 and End Cull Distance
+  30000 cm, with grass.CullDistanceScale 2 as a temporary diagnostic only. No
+  user confirmation of the final render-distance settings was received.
+- Dirt painting remained unresolved in the last confirmed editor state. Painting
+  Restriction was set to None, the edit layer was unlocked/visible, Dirt had its
+  supplied no-weight-blend Layer Info and Subtractive Blend was off. The proposed
+  clean test was to Clear Layer on all five target layers, Fill Layer on Dirt,
+  then paint Grass over it. There is no report yet that the Dirt fill changed the
+  landscape. Resume by testing Dirt Fill Layer first; if it does not visibly
+  change the landscape, diagnose the material/layer blend rather than brush
+  strength. Do not delete the supplied Layer Info assets.
+
+WATER MATERIAL AND SHORE FOAM
+- With the current Substrate blend-mode names, the equivalent of the legacy UE
+  5.5 Translucent mode is TranslucentGreyTransmittance. Colored transmittance is
+  for tinted transmission and is more expensive; Masked remains preferable for
+  binary-cutout foliage.
+- A material compiler error came from adding a texture RGB float3 to a Panner UV
+  float2. The advised correction was Texture RGB -> Component Mask RG -> Multiply
+  -> Add with the Panner float2 -> downstream Texture Sample UVs. The screenshot
+  identified the mismatch, but successful recompilation was not explicitly
+  reported.
+- The original foam mask globally pulsated because Time * Speed was added to the
+  entire distance mask immediately before Sine. Removing that time input stopped
+  the global phase animation, but the resulting foam/noise covered most of the
+  water.
+- The pending shoreline-only correction is to multiply the foam/noise result by
+  the lower DistanceToNearestSurface shore mask explicitly. Disconnect the lower
+  Power output from Clamp Max, keep Clamp Min/Max at 0/1, and feed the lower Power
+  into B of the Multiply after Clamp instead of its constant 1. Feed that Multiply
+  through Saturate to the foam Lerp Alpha. Start Shore Expansion near 200 cm and
+  Shading Foam exponent at 1. Preview the lower Power node: it must be white only
+  near shore and black over open water. If it is white everywhere, verify Generate
+  Mesh Distance Fields and restart Unreal. This final foam setup has not yet been
+  confirmed by the user.
+
 CURRENT HANDOFF - OCTOBER 5 (PLAYER FOOTSTEPS AND TELEPORTER AOE WARNING)
 
 SCOPE OF THIS SECTION
