@@ -12,7 +12,8 @@ public class RGB : ModuleRules
             "CoreUObject",
             "Engine",
             "InputCore",
-            "EnhancedInput"
+            "EnhancedInput",
+            "Niagara"
         });
     }
 }

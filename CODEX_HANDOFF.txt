@@ -1,5 +1,60 @@
 RGB - CROSS-PC CODEX HANDOFF
-Last updated: 2026-10-05 (Europe/Stockholm)
+Last updated: 2026-10-06 (Europe/Stockholm)
+
+CURRENT HANDOFF - OCTOBER 6 (TELEPORTER AOE AND TELEPORT TRANSITION)
+
+SESSION SCOPE AND CHECKOUT
+- Current inspected HEAD is d3924b3, "Level design, Water attempt, Sound
+  balancing." The changes below are present as uncommitted source/project-file
+  work in the current checkout. Preserve unrelated user work; do not reset or
+  overwrite the working tree.
+- The user typed these changes with Codex guidance. They reported successful
+  C++ builds after the AoE implementation and again after the teleport
+  transition code. Codex did not independently run Unreal or inspect binary
+  Blueprint/Niagara assets.
+
+TELEPORTER AOE ATTACK - IMPLEMENTED AND PLAYED IN PIE
+- ARGBTeleporterEnemyCharacter now owns configurable AoERadius, AoEDamage,
+  AoEWindupDuration, AoECooldown, AoECheckInterval and AoEWarningOffset values.
+  It checks the player every AoECheckInterval and calculates distance in the
+  gameplay X/Z plane by explicitly ignoring Y.
+- When the player is inside AoERadius, the Teleporter begins a wind-up, blocks
+  teleporting while that wind-up is active, then rechecks range before calling
+  ARGBPlayerCharacter::RecieveDamage(AoEDamage). It starts its cooldown after
+  the resolution attempt. Leaving the area before resolution avoids damage.
+- Niagara was enabled in RGB.uproject and added to RGB.Build.cs. The Teleporter
+  has an inherited AoEWarningEffect UNiagaraComponent. At BeginPlay it is moved
+  to the capsule feet plus AoEWarningOffset, kept inactive by default, activates
+  during the wind-up, and deactivates when the attack resolves or actor ends.
+- In BP_RGBEnemyTeleporter, AoEWarningEffect has been assigned the existing
+  NS_TeleporterAoEWarning system. The user reported the warning effect works,
+  adjusted its timing/position, and tuned AoERadius upward until the gameplay
+  damage boundary matched the visual ring closely enough for now.
+- Current intended test behavior: ring hidden outside range; ring shows during
+  wind-up; player takes one pip only if still inside at resolution; moving out
+  avoids the hit; teleporting is blocked while the ring is active; cooldown
+  blocks immediate repeat attacks.
+
+TELEPORT EFFECT TRANSITION - CODE READY, ASSETS/PIE TEST DEFERRED
+- ARGBTeleporterEnemyCharacter now exposes TeleportDepartureEffect,
+  TeleportArrivalEffect and TeleportEffectDelay (default 0.15 seconds). It also
+  stores a pending destination/rotation/TargetPoint, and has a transition timer
+  plus bTeleportInProgress state.
+- TryTeleport now begins a transition instead of calling TeleportTo immediately:
+  it spawns a departure Niagara system at the current location, waits for
+  TeleportEffectDelay, teleports to the stored destination, marks the target
+  point as last-used, and spawns an arrival effect. AoE attempts are blocked
+  while this transition is active. EndPlay clears its transition timer.
+- Do NOT assign NS_TeleporterAoEWarning directly to the new departure/arrival
+  slots if it is looping: spawned looping systems can remain in the level. The
+  intended next editor task is to duplicate it as
+  Content/RGB/VFX/Teleporter/NS_TeleporterTeleportBurst, set the emitter Loop
+  Behavior to Once with roughly 0.25-second duration, then assign that one-shot
+  asset to both slots in BP_RGBEnemyTeleporter and PIE-test the sequence.
+- No teleport Niagara asset has been created/assigned and no teleport visual
+  PIE result has been reported yet. The C++ transition compiles but needs that
+  editor setup and verification before it is considered complete.
+
 
 CURRENT HANDOFF - OCTOBER 5 (PLATFORMS, CAMERA TRACKING, CHECKPOINTS AND ARENA AUDIO)
 
