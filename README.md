@@ -13,12 +13,8 @@ TDDD23 game project developed with Unreal Engine 5.7.
 Generated Unreal folders such as `Binaries`, `Intermediate`, `Saved`, and
 `DerivedDataCache` are intentionally not committed.
 
-# RGB
+#
 
 RGB is an early-stage 2.5D action-puzzle platformer built in Unreal Engine 5.7. Its central design explores how colour-based rules can connect movement, combat, platforms, enemies, and arena-scale puzzles into one readable gameplay system.
-
-The project is being developed C++-first, with an emphasis on deterministic mechanics, modular architecture, testable gameplay rules, and a clear separation between authoritative systems and visual presentation.
-
-RGB is intended as a potential foundation for a master’s thesis collaboration. Relevant research directions could include game AI, procedural or automated puzzle evaluation, player modelling, dynamic difficulty, system-driven level design, and methods for testing or validating interconnected gameplay mechanics.
 
 The project is currently in pre-production, with its design and technical architecture being established before gameplay implementation begins.
