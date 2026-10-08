@@ -281,10 +281,10 @@ void ARGBPlayerCharacter::StartDash()
 	if (RGBMovement->TryStartAirDash(DashDirection)) {
 		LastFacingDirection = DashDirection;
 		BufferedJumpExpiresAt = -1.0f;
-	}
 
-	if (IsValid(DashSound)) {
-		UGameplayStatics::PlaySoundAtLocation(this, DashSound, GetActorLocation());
+		if (IsValid(DashSound)) {
+			UGameplayStatics::PlaySoundAtLocation(this, DashSound, GetActorLocation());
+		}
 	}
 }
 

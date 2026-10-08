@@ -1,7 +1,27 @@
 RGB - CROSS-PC CODEX HANDOFF
-Last updated: 2026-10-06 (Europe/Stockholm)
+Last updated: 2026-10-07 (Europe/Stockholm)
 
-CURRENT HANDOFF - OCTOBER 6 (TELEPORTER AOE AND TELEPORT TRANSITION)
+CURRENT HANDOFF - OCTOBER 7 (PLAYER2 AIR DASH ANIMATION)
+
+- Created BLENDER/PLAYER/Animations/PLAYER2_AirDash/PLAYER2_AirDash.fbx and
+  PLAYER2_AirDash.blend from the supplied robot mesh, PLAYER2_Jump.fbx and
+  PLAYER2_Land.fbx. Input files were preserved; no gameplay or Unreal binary
+  asset changes were made for this animation task.
+- User requested a forward airborne dash, fast linear entry and linear return,
+  and no preview deliverable. Jump-end and land-start poses differ; used the
+  explicitly allowed landing-pose ending. This is a single-play clip, not a loop.
+- Duration is 0.30 seconds at 60 fps, matching the current C++ AirDashDuration
+  default. Frames 1-5 enter the dash, 5-13 hold, 13-19 return. Root stays fixed.
+- Preserved Bone_007 root plus all 119 child bones from the UE export. Blender
+  FBX round-trip validation passed for hierarchy, duration, fixed root and all
+  19 poses, including exact intended jump-end/land-start boundary transforms
+  within floating-point tolerance. Unreal import and PIE remain UNTESTED.
+- NEXT: import the animation-only FBX using the existing PLAYER2 Skeleton,
+  retain 60 fps, and inspect the animation/joins before AnimBP integration.
+  Read the asset folder README for editing and re-export instructions.
+- No commit or push was made. Preserve the earlier unrelated checkout work.
+
+PREVIOUS HANDOFF - OCTOBER 6 (TELEPORTER AOE AND TELEPORT TRANSITION)
 
 SESSION SCOPE AND CHECKOUT
 - Current inspected HEAD is d3924b3, "Level design, Water attempt, Sound

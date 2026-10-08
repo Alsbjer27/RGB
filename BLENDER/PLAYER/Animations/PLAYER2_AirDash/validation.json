@@ -1,0 +1,92 @@
+{
+  "status": "PASS",
+  "bone_count_excluding_root": 119,
+  "root": "Bone_007",
+  "fps": 60,
+  "duration_seconds": 0.3,
+  "frame_range": [
+    2.0,
+    20.0
+  ],
+  "max_position_error_m": 1.663311372862073e-05,
+  "max_rotation_error_degrees": 0.0,
+  "checks": {
+    "1": {
+      "position": 1.1329273577229235e-05,
+      "degrees": 0.0
+    },
+    "2": {
+      "position": 8.0622856230311e-06,
+      "degrees": 0.0
+    },
+    "3": {
+      "position": 7.826387195647775e-06,
+      "degrees": 0.0
+    },
+    "4": {
+      "position": 7.969210106543669e-06,
+      "degrees": 0.0
+    },
+    "5": {
+      "position": 8.756812893012503e-06,
+      "degrees": 0.0
+    },
+    "6": {
+      "position": 8.756812893012503e-06,
+      "degrees": 0.0
+    },
+    "7": {
+      "position": 8.756812893012503e-06,
+      "degrees": 0.0
+    },
+    "8": {
+      "position": 8.872887642826269e-06,
+      "degrees": 0.0
+    },
+    "9": {
+      "position": 8.756812893012503e-06,
+      "degrees": 0.0
+    },
+    "10": {
+      "position": 8.872887642826269e-06,
+      "degrees": 0.0
+    },
+    "11": {
+      "position": 8.756812893012503e-06,
+      "degrees": 0.0
+    },
+    "12": {
+      "position": 8.756812893012503e-06,
+      "degrees": 0.0
+    },
+    "13": {
+      "position": 8.756812893012503e-06,
+      "degrees": 0.0
+    },
+    "14": {
+      "position": 1.1658766030369902e-05,
+      "degrees": 0.0
+    },
+    "15": {
+      "position": 1.0251998901367188e-05,
+      "degrees": 0.0
+    },
+    "16": {
+      "position": 1.0135429841260874e-05,
+      "degrees": 0.0
+    },
+    "17": {
+      "position": 1.663311372862073e-05,
+      "degrees": 0.0
+    },
+    "18": {
+      "position": 1.1037647279806815e-05,
+      "degrees": 0.0
+    },
+    "19": {
+      "position": 1.2018283043983993e-05,
+      "degrees": 0.0
+    }
+  },
+  "unreal_import_and_playback": "Not run"
+}
