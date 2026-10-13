@@ -14,6 +14,10 @@
 
 #include "../Camera/RGBPlayerCameraManager.h"
 
+#include "Camera/PlayerCameraManager.h"
+
+#include "TimerManager.h"
+
 ARGBPlayerController::ARGBPlayerController(){
 	PlayerCameraManagerClass = ARGBPlayerCameraManager::StaticClass();
 }
@@ -21,6 +25,22 @@ ARGBPlayerController::ARGBPlayerController(){
 void ARGBPlayerController::BeginPlay()
 {
 	Super::BeginPlay();
+
+	if (IsLocalController() && IsValid(PlayerCameraManager))
+	{
+		SetIgnoreMoveInput(true);
+		SetIgnoreLookInput(true);
+		PlayerCameraManager->SetManualCameraFade(1.0f, FLinearColor::Black, false);
+
+		if (InitialBlackDelay > 0.0f)
+		{
+			GetWorldTimerManager().SetTimer(InitialBlackDelayTimerHandle, this, &ARGBPlayerController::StartInitialFadeIn, InitialBlackDelay, false);
+		}
+		else
+		{
+			StartInitialFadeIn();
+		}
+	}
 
 	if (!IsLocalController()) {
 		return;
@@ -52,6 +72,9 @@ void ARGBPlayerController::BeginPlay()
 
 void ARGBPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	GetWorldTimerManager().ClearTimer(InitialBlackDelayTimerHandle);
+	GetWorldTimerManager().ClearTimer(InitialFadeInTimerHandle);
+
 	if (ULocalPlayer* LocalPlayer = GetLocalPlayer()) {
 		UEnhancedInputLocalPlayerSubsystem* InputSubsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(LocalPlayer);
 
@@ -84,4 +107,27 @@ void ARGBPlayerController::RestartPlayer() {
 	if (ensureMsgf(GameMode, TEXT("Restart requires RGBGameMode"))) {
 		GameMode->RestartMechanicsTest(this);
 	}
+}
+
+void ARGBPlayerController::StartInitialFadeIn()
+{
+	if (IsValid(PlayerCameraManager))
+	{
+		PlayerCameraManager->StartCameraFade(1.0f, 0.0f, InitialFadeInDuration, FLinearColor::Black, false, false);
+	}
+
+	if (InitialFadeInDuration > 0.0f)
+	{
+		GetWorldTimerManager().SetTimer(InitialFadeInTimerHandle, this, &ARGBPlayerController::FinishInitialFadeIn, InitialFadeInDuration, false);
+	}
+	else
+	{
+		FinishInitialFadeIn();
+	}
+}
+
+void ARGBPlayerController::FinishInitialFadeIn()
+{
+	SetIgnoreMoveInput(false);
+	SetIgnoreLookInput(false);
 }

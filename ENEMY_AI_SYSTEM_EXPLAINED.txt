@@ -1,0 +1,1101 @@
+RGB ENEMY AI SYSTEM - COMPLETE TECHNICAL AND DESIGN EXPLANATION
+================================================================
+
+Document purpose
+----------------
+
+This document explains how the enemy AI currently implemented in RGB works. It
+is intended to be a reliable technical reference and a base for a later AI
+presentation. It describes the actual C++ implementation as of 2026-10-13,
+including the shared enemy framework, arena-level multi-agent coordination,
+ground enemies, teleporting enemies, flying enemies, attacks, damage,
+respawning, editor configuration, and known limitations.
+
+The important architectural idea is that the system has two decision levels:
+
+1. The arena coordinator makes group-level decisions. It decides which enemies
+   may attack, which ground enemy receives the close melee role, where pressure
+   slots should be, and which special destination is reserved by which enemy.
+
+2. Each enemy actor makes its own local decisions. It performs movement,
+   collision checks, attacks, visual state changes, teleport selection, or
+   flying steering according to its enemy type.
+
+This is a lightweight multi-agent system. It is not implemented with Unreal
+Behavior Trees, blackboards, EQS, or NavMesh pathfinding. The authoritative
+rules are implemented directly in C++ using explicit state, timers, collision
+queries, and short-lived coordination assignments.
+
+
+1. MAIN CLASSES AND RESPONSIBILITIES
+====================================
+
+ARGBEnemyCharacter
+------------------
+
+This is the shared base class for enemies. It owns behavior that all enemy
+types need:
+
+- Enemy color and color-specific elimination.
+- Health.
+- Ground patrol and basic ground pursuit.
+- Shared action-state reporting.
+- Shared melee attack timing and player damage.
+- Access to the arena coordinator.
+- Access to the arena camera zone.
+- Attack permission acquisition and release.
+- Shared target reservation helper functions.
+- Elimination notification.
+- Supporting-platform color transfer for grounded enemies.
+
+ARGBTeleporterEnemyCharacter
+----------------------------
+
+This derives from ARGBEnemyCharacter. It disables ordinary patrol movement and
+adds:
+
+- Random idle time between teleport attempts.
+- Authored Target Point discovery.
+- Weighted destination selection.
+- Destination occupancy validation.
+- Shared target-point reservations.
+- Teleport charge timing.
+- Niagara charge, departure, and arrival presentation hooks.
+- A mesh implosion during the teleport charge.
+- A radial area-of-effect attack with a warning period.
+
+ARGBFlyingEnemyCharacter
+------------------------
+
+This also derives from ARGBEnemyCharacter. It disables ground patrol and adds:
+
+- Continuous pursuit of the player's live position in the X/Z gameplay plane.
+- Flying acceleration and deceleration.
+- Swept collision movement.
+- Local obstacle-direction sampling.
+- Separation steering from other enemies.
+- Pawn overlap behavior so flyers do not physically shove enemies or players.
+- Camera-zone confinement.
+- A flying-specific player attack-range test.
+- An optional visual-facing mode.
+
+URGBArenaEnemyCoordinatorComponent
+----------------------------------
+
+Every ARGBArenaControl owns one of these components. It is the group-level
+multi-agent coordinator. Its responsibilities are:
+
+- Registering enemies in one arena.
+- Remembering each enemy's mobility type.
+- Finding the player.
+- Assigning one or more melee attackers.
+- Assigning remaining enemies to pressure roles.
+- Treating teleporters as special-role enemies.
+- Limiting how many attacks may happen simultaneously.
+- Giving assignments a minimum commitment time to reduce rapid role swapping.
+- Giving assignments short leases so stale decisions expire.
+- Reserving shared targets, such as teleporter Target Points.
+- Releasing reservations and attack permissions when an enemy finishes,
+  disappears, or is eliminated.
+
+ARGBArenaControl
+----------------
+
+This actor owns the lifecycle around the AI:
+
+- It holds the list of enemies assigned to the arena.
+- It provides the arena coordinator to those enemies.
+- It provides the arena camera zone to those enemies.
+- It records the class and spawn transform of each enemy.
+- It listens for elimination events.
+- It unregisters eliminated enemies from coordination.
+- It can respawn enemies after a configurable delay.
+- It recreates enemies at their recorded spawn transforms.
+- It reconnects respawned enemies to the coordinator and camera zone.
+- It activates enemies only while the player is inside the arena camera zone.
+- It removes enemies and cancels respawns when the arena is completed.
+- It integrates enemy lifecycle with arena reset.
+
+ARGBArenaCameraZone
+-------------------
+
+The camera zone is also used as an arena boundary for flying enemies. It can:
+
+- Test whether a world position is inside the zone.
+- Clamp a world position to the zone.
+- Apply padding while clamping, allowing the flyer's entire collision capsule
+  to remain inside instead of only keeping its center inside.
+
+
+2. SHARED AI DATA
+=================
+
+Enemy mobility types
+--------------------
+
+ERGBEnemyMobilityType identifies the movement style used for coordination:
+
+- Ground: ordinary platform-bound enemy.
+- Flying: free movement in the side-view X/Z plane.
+- Teleporter: stationary enemy that relocates between authored points.
+
+The coordinator uses this type when constructing role positions. Ground
+enemies keep their current Z height. Flying pressure slots may receive vertical
+offsets. Teleporters are assigned the Special role.
+
+Enemy coordination roles
+------------------------
+
+ERGBEnemyCoordinationRole contains:
+
+- Unassigned: no active group role.
+- MeleeAttacker: selected to occupy the close attack position and permitted to
+  request an attack.
+- Pressure: positioned farther from the player to prevent every enemy from
+  stacking in the same location.
+- Special: used by teleporter enemies. Their special behavior decides their
+  exact teleport actions.
+
+Coordination assignment
+-----------------------
+
+FRGBEnemyCoordinationAssignment is the message sent conceptually from the arena
+coordinator to an enemy. It contains:
+
+- Role: the selected coordination role.
+- TargetLocation: the assigned world-space slot.
+- bHasTargetLocation: whether the target is valid.
+- bCanAttack: whether the enemy is currently eligible to request attack
+  permission.
+- SlotIndex: the pressure-slot index, or INDEX_NONE when no pressure index is
+  used.
+- LeaseExpiresAt: the world time at which this assignment becomes stale.
+
+The lease matters because enemies must not obey an assignment forever if the
+coordinator stops updating. GetAssignment returns false after the lease expires.
+
+
+3. SHARED ACTION STATES
+=======================
+
+ERGBEnemyActionState reports what an enemy is currently doing. This provides a
+common vocabulary for debugging and presentation even though different enemy
+types execute different logic.
+
+Idle
+    The enemy is waiting or currently has no movement action to perform.
+
+Patrol
+    A ground enemy is moving through its ordinary patrol behavior.
+
+Chase
+    An enemy is pursuing the player or moving toward a combat assignment.
+
+Turning
+    A ground enemy is playing or simulating its direction-change sequence.
+
+AttackWindup
+    A shared melee attack has begun and is waiting for its damage moment.
+
+AttackCooldown
+    The previous attack has finished and the enemy must wait before beginning
+    another.
+
+TeleportCharge
+    A teleporter has selected and reserved a destination and is charging before
+    moving.
+
+AoEWindup
+    A teleporter is warning the player before resolving radial damage.
+
+Disabled
+    The enemy has been eliminated or removed because the arena completed.
+
+This enum is exposed to Blueprints for read-only presentation and diagnostics.
+The authoritative behavior remains in C++.
+
+
+4. ARENA-LEVEL MULTI-AGENT COORDINATION
+=======================================
+
+Registration
+------------
+
+At arena startup, ARGBArenaControl records each assigned enemy and registers it
+with URGBArenaEnemyCoordinatorComponent. Dynamically spawned enemies inside the
+camera zone are also detected and registered. A respawned enemy is registered
+again after creation.
+
+During registration, the arena gives the enemy:
+
+- A pointer to the arena coordinator.
+- A pointer to the arena camera zone.
+- An elimination-event connection.
+- A spawn-record index used by the respawn system.
+
+Arena activation gate
+---------------------
+
+Arena-controlled enemies begin in Idle and remain inactive until the player
+enters that arena's camera zone. ARGBArenaControl listens to the camera zone's
+entry and exit events and calls SetArenaAIActive on every live assigned enemy.
+
+While inactive:
+
+- Ground movement and player detection are suppressed.
+- Flying pursuit velocity is cleared.
+- Shared attack windups and damage timers are canceled.
+- Coordinator attack permission is released.
+- Teleport timers, active teleport charges, and AoE windups are canceled.
+- Teleport and AoE Niagara warning components are deactivated.
+- The reported action state is Idle.
+
+The teleporter captures its Blueprint-authored mesh scale during BeginPlay.
+Deactivation restores that scale only after it has been captured. This avoids
+an actor-initialization-order problem where an arena could deactivate the enemy
+first and accidentally replace its authored scale with the temporary default
+value of (1,1,1).
+
+When the player enters, enemies resume their appropriate behavior. Teleporters
+schedule a new random teleport delay, flyers immediately refresh their player
+target, and ground enemies reacquire the player through their detection timer.
+When the player exits, the same enemies return to Idle. An enemy that respawns
+inherits the arena's current active state, so it cannot begin acting outside an
+inactive arena.
+
+Assignment update timing
+------------------------
+
+The coordinator does not run every frame. It uses a repeating timer. The
+default AssignmentUpdateInterval is 0.2 seconds. This is frequent enough to
+react to the player without requiring group-level logic every Tick.
+
+Selecting attackers
+-------------------
+
+On every assignment update:
+
+1. Invalid or destroyed enemy references are removed.
+2. The player is resolved from the stored target or player index 0.
+3. Non-teleporter enemies become attack candidates.
+4. Candidates are sorted by distance to the player.
+5. An enemy already committed as the melee attacker receives priority while
+   its commitment is active or while it holds attack permission.
+6. The closest candidates are selected up to MaximumSimultaneousAttackers.
+
+The default MaximumSimultaneousAttackers is 1. This is the main mechanism that
+prevents every enemy from attacking at exactly the same moment.
+
+Melee slots
+-----------
+
+A melee slot is placed to the left or right of the player, based on the
+enemy's current side. The default MeleeSlotDistance is 110 cm.
+
+For a ground enemy, the target Z is kept at that enemy's current Z. This avoids
+pretending that the current ground implementation can automatically navigate
+between platforms.
+
+Pressure slots
+--------------
+
+Enemies not selected as attackers receive pressure slots. The slots alternate
+between the player's left and right sides. Each pair expands outward in rings.
+
+The defaults are:
+
+- PressureSlotDistance: 280 cm.
+- AdditionalPressureSlotSpacing: 140 cm.
+- FlyingVerticalSlotSpacing: 140 cm.
+
+Flying pressure slots can also be offset above or below the player. However,
+the current flying enemy does not directly fly to its pressure TargetLocation.
+It follows the player's live location continuously and reads the coordinator's
+assignment only to determine whether it may attack. Therefore the vertical
+flying pressure-slot data exists in the coordinator, but it is not yet used as
+the flyer's movement destination.
+
+Commitment and assignment leases
+--------------------------------
+
+MinimumAssignmentCommitment defaults to 1.5 seconds. When an enemy receives a
+new role, the coordinator tries to retain that role for at least this long.
+This reduces constant role swapping when two enemies are at almost equal
+distances from the player.
+
+AssignmentLeaseDuration defaults to 0.75 seconds. Every update renews the
+lease. If updates stop and the lease expires, an enemy treats the assignment as
+invalid instead of following stale group data.
+
+Attack permission
+-----------------
+
+bCanAttack means the enemy is eligible to ask for permission. It does not mean
+damage happens immediately.
+
+When an enemy begins an attack, it calls TryAcquireAttackPermission. The
+coordinator counts all currently acquired permissions. If the configured
+simultaneous-attacker limit has been reached, the request fails and the enemy
+must wait.
+
+Permission is released when:
+
+- The shared melee attack finishes.
+- A teleporter's AoE attack resolves.
+- An enemy is eliminated.
+- An enemy changes coordinator.
+- An enemy ends play.
+- The arena resets or completes.
+
+Target reservations
+-------------------
+
+The coordinator can reserve an AActor for one enemy. Reservations currently
+prevent multiple teleporters from selecting the same Target Point during the
+same teleport window.
+
+A reservation is rejected when another valid enemy already owns the target.
+Invalid enemy and target references are cleaned up during coordinator updates.
+Teleporters release their reservation after a successful teleport, a canceled
+teleport, or destruction.
+
+
+5. BASE GROUND ENEMY BEHAVIOR
+=============================
+
+Movement plane and CharacterMovement
+------------------------------------
+
+Ground enemies use ACharacter and UCharacterMovementComponent. Movement is
+constrained to the game's side-view plane:
+
+- X is horizontal gameplay movement.
+- Z is vertical world movement.
+- Y is the locked depth axis.
+
+The default ground movement values include:
+
+- MaxWalkSpeed: 200 cm/s.
+- MaxAcceleration: 2000 cm/s squared.
+- BrakingDecelerationWalking: 2000 cm/s squared.
+- GravityScale: 3.
+
+The enemy cannot deliberately walk off ledges.
+
+Patrol
+------
+
+If patrol is enabled and no coordinated movement takes priority, the ground
+enemy moves along X in PatrolDirection.
+
+Before moving, CanWalkInDirection performs two checks:
+
+1. A forward sphere sweep checks for blocking geometry.
+2. A downward trace ahead checks that walkable ground exists within the allowed
+   step/drop range.
+
+If the path ahead is unsafe, the enemy stops. If the opposite direction is
+safe, it begins turning around.
+
+Player detection
+----------------
+
+Ground player detection runs on a 0.1-second timer when patrol is enabled.
+Detection requires:
+
+- The player to be within DetectionRange.
+- The player's feet to be within DetectionHeightTolerance of the enemy's feet.
+- An unobstructed visibility trace.
+
+Once detected, LoseInterestRange provides hysteresis so the target is not lost
+at the exact detection boundary.
+
+Ground chase and coordinator movement
+--------------------------------------
+
+When a valid coordination assignment exists, the ground enemy moves toward the
+assignment's X coordinate. It stops within a 10 cm slot tolerance. A selected
+attacker then attempts to attack if bCanAttack is true.
+
+If no assignment is available, the base enemy can pursue its locally detected
+TargetPlayer directly along X.
+
+Ground enemies do not currently calculate paths between separate platforms.
+They stay on their present reachable surface and rely on ledge/wall probes.
+Authored platform traversal remains future work.
+
+Turning
+-------
+
+When movement direction changes, StartTurn stops movement and tries to play a
+TurnMontage. During the montage, the actor rotates over the montage length. If
+the required animation setup is missing, the enemy logs a warning and snaps to
+the required facing direction instead.
+
+
+6. SHARED MELEE ATTACK AND DAMAGE PIPELINE
+==========================================
+
+Starting an attack
+------------------
+
+StartAttackAgainst first calls IsPlayerWithinAttackRange. If the player is in
+range, the player becomes TargetPlayer and the shared StartAttack path runs.
+
+An attack cannot start when:
+
+- Another attack is already active.
+- The enemy is currently turning.
+- The attack cooldown has not expired.
+- The arena coordinator refuses attack permission.
+
+Attack timeline
+---------------
+
+When an attack begins:
+
+1. Movement stops.
+2. The optional AttackMontage plays if one is assigned.
+3. The action state becomes AttackWindup.
+4. A damage timer is scheduled using AttackHitDelay.
+5. A finish timer is scheduled using AttackDuration.
+
+AttackDuration is forced to be at least AttackHitDelay plus a small safety
+margin. The gameplay timing therefore works even when no animation montage is
+assigned. Animation is presentation, not the owner of damage.
+
+Damage resolution
+-----------------
+
+At the damage moment, the enemy checks the range again. Damage is applied only
+if:
+
+- The target still exists.
+- AttackDamage is positive.
+- The target is still within the relevant range test.
+
+The enemy then calls ARGBPlayerCharacter::RecieveDamage. The player reduces
+CurrentHealth, broadcasts OnHealthChanged, and triggers the existing restart
+flow if health reaches zero.
+
+At the end of AttackDuration:
+
+- The attack ends.
+- AttackCooldown begins.
+- The action state becomes AttackCooldown.
+- Coordinator attack permission is released.
+
+Ground attack range
+-------------------
+
+Ground enemies compare horizontal X separation using both collision-capsule
+radii, StopDistanceFromPlayer, and AttackHitRangePadding. They also compare the
+player's feet height with DetectionHeightTolerance. This makes the range test
+suitable for two actors standing on approximately the same surface.
+
+Flying attack range
+-------------------
+
+Flying enemies override only the range calculation while reusing the rest of
+the shared attack pipeline.
+
+The flyer is treated as a sphere based on its capsule radius. The player is
+treated as a vertical capsule. The code finds the nearest point on the vertical
+center segment of the player's capsule and measures the X/Z distance from the
+flyer to that point. The allowed distance includes:
+
+- Flying-enemy capsule radius.
+- Player capsule radius.
+- StopDistanceFromPlayer.
+- AttackHitRangePadding.
+
+This allows a flying enemy to damage the player's body or head. The old
+ground-style feet comparison would incorrectly require a flyer to descend to
+the player's floor height before an attack could connect.
+
+
+7. FLYING ENEMY BEHAVIOR
+========================
+
+Initialization
+--------------
+
+The flying enemy:
+
+- Disables ground patrol.
+- Uses a static-mesh FlyingBody for its visible spherical body.
+- Hides the inherited skeletal mesh.
+- Uses a 48 cm radius and 48 cm half-height capsule by default.
+- Disables gravity.
+- changes CharacterMovement to MOVE_Flying.
+- Locks movement to its initial Y plane.
+- Disables CharacterMovement's own component Tick because the class performs a
+  controlled swept move from its own actor Tick.
+- Refreshes its player reference on a timer, defaulting to every 0.25 seconds.
+
+Player target resolution
+------------------------
+
+The flyer first asks Unreal for player character 0. If that fails, it performs
+a fallback actor search for ARGBPlayerCharacter. A missing-player warning is
+logged once instead of every frame.
+
+Direct pursuit
+--------------
+
+Every Tick, the flyer calculates:
+
+    ToTarget = PlayerLocation - EnemyLocation
+
+Y is forced to zero, so pursuit exists only in X and Z. If the target is farther
+away than PlayerArrivalRadius, ToTarget becomes the normalized pursuit
+direction.
+
+The pursuit direction is weighted by PlayerTrackingWeight and combined with
+local separation steering. The default PlayerTrackingWeight is 2.5.
+
+The current flyer follows the player's real position continuously. It does not
+enter a traditional idle/patrol loop and does not use the coordinator's
+pressure TargetLocation as its flight goal. The coordinator controls whether
+the flyer may attack.
+
+Acceleration
+------------
+
+The selected clear direction is multiplied by MaximumFlightSpeed. FlightVelocity
+approaches that desired velocity using constant interpolation and
+FlightAcceleration. When no target or usable direction exists, velocity moves
+toward zero using FlightDeceleration.
+
+Defaults:
+
+- MaximumFlightSpeed: 350 cm/s.
+- FlightAcceleration: 1200 cm/s squared.
+- FlightDeceleration: 900 cm/s squared.
+- PlayerArrivalRadius: 10 cm.
+
+Enemy separation
+----------------
+
+The flyer performs a local pawn overlap query within EnemySeparationRadius.
+For each other ARGBEnemyCharacter, it calculates a direction away from that
+enemy. Nearby enemies contribute more strongly than distant ones. The combined
+result is clamped and added to player pursuit using EnemySeparationWeight.
+
+Defaults:
+
+- EnemySeparationRadius: 180 cm.
+- EnemySeparationWeight: 1.75.
+
+If two enemies occupy exactly the same position, their unique object IDs choose
+opposite deterministic X directions. This gives them a way to separate instead
+of producing a zero vector.
+
+The flyer's capsule overlaps the Pawn collision channel rather than blocking
+it. This prevents physical pushing and stacking forces between enemies and the
+player. Separation steering provides behavioral spacing.
+
+Geometry avoidance
+------------------
+
+The flyer first probes the direct desired direction. It performs a sphere sweep
+on the Pawn collision channel, meaning level geometry that blocks Pawn movement
+is treated as an obstacle while overlap-only arena volumes are ignored.
+
+If the direct path is blocked, it evaluates candidate directions:
+
+- Desired direction plus a perpendicular offset.
+- Desired direction minus a perpendicular offset.
+- Both pure perpendicular directions.
+- Straight up.
+- Straight down.
+
+Each candidate receives a score based mostly on collision clearance with a
+smaller reward for alignment with the desired player direction. The highest
+scoring usable direction is selected.
+
+Defaults:
+
+- ObstacleProbeDistance: 240 cm.
+- ObstacleProbeRadiusScale: 0.9.
+- ObstacleAvoidanceWeight: 2.5.
+
+Swept movement and sliding
+--------------------------
+
+The final velocity is converted to a frame movement delta. The movement
+component uses SafeMoveUpdatedComponent with sweep enabled. If it hits blocking
+geometry, the remaining delta is projected onto the hit surface and a second
+swept slide move is attempted. Velocity is projected along the same surface.
+
+This means the flyer does not teleport through geometry during ordinary flight.
+
+Camera-zone confinement
+-----------------------
+
+Every registered enemy receives its ARGBArenaCameraZone from ARGBArenaControl.
+The flyer also has a one-time fallback search at BeginPlay: if the arena has not
+assigned a zone yet, it finds the camera zone containing its spawn position.
+
+Before every primary or slide move, the desired target location is clamped to
+the camera zone. The clamp includes padding equal to the flyer's capsule radius
+on X/Y and capsule half-height on Z. Therefore the whole collision shape stays
+inside the zone, not merely its origin.
+
+If no containing camera zone can be found, the flyer logs a warning and moves
+without arena-boundary confinement.
+
+Diagnostics
+-----------
+
+If the player is significantly separated on X but the flyer makes almost no X
+progress for at least one second, a throttled warning reports:
+
+- Player delta.
+- Chosen flight direction.
+- Forward clearance.
+- The actor hit by the obstacle probe.
+- The actor hit by the actual move.
+
+This was added to make collision and axis errors visible in the Output Log.
+
+
+8. TELEPORTER ENEMY BEHAVIOR
+============================
+
+Authored teleport network
+-------------------------
+
+Teleporters do not choose arbitrary world positions. They search for
+ATargetPoint actors with TeleportPointTag, which defaults to TeleporterPoint.
+Only points inside TeleportPointSearchRadius of the teleporter's starting
+location are retained.
+
+This authored-point design gives the level designer control over legal,
+readable teleport positions.
+
+Random idle timing
+------------------
+
+After startup and after every completed or canceled attempt, the teleporter
+schedules the next attempt after a random delay between:
+
+- MinimumTeleportIdleTime, default 1.5 seconds.
+- MaximumTeleportIdleTime, default 6 seconds.
+
+This removes a perfectly predictable fixed teleport rhythm.
+
+Conditions for attempting a teleport
+-------------------------------------
+
+An attempt is postponed if:
+
+- An AoE windup is in progress.
+- Another teleport is already in progress.
+- The player cannot be found.
+- The player is not near any of the teleporter's valid Target Points.
+
+The proximity threshold uses the inherited DetectionRange.
+
+Candidate filtering
+-------------------
+
+A Target Point is rejected when:
+
+- It is invalid.
+- It was the last successfully used point.
+- Another teleporter has reserved it.
+- The destination capsule is occupied by another Pawn.
+- It is closer than MinimumTeleportDistance to the current location.
+
+Destination Z is raised by the enemy capsule half-height so that a Target Point
+placed on the floor represents the enemy's base rather than its center.
+
+Destination scoring
+-------------------
+
+For every valid point, the teleporter calculates its distance to the player.
+Those distances are normalized from nearest to farthest. Each point then gets:
+
+- A random score.
+- A player-closeness score.
+
+FinalScore is an interpolation between those scores using
+PlayerProximityWeight. The default weight is 0.65.
+
+At 0, selection is driven by randomness. At 1, selection strongly prefers the
+closest valid point. Values in between create a mixture: the teleporter tends
+to threaten the player but remains unpredictable.
+
+Reservation and final validation
+--------------------------------
+
+The winning Target Point must be reserved before teleport charge begins. When
+the charge completes, the destination is recalculated and checked again. This
+protects against another Pawn moving into the destination during the warning
+period.
+
+If the destination becomes invalid, the charge is canceled, presentation is
+reset, the reservation is released, and another random idle period begins.
+
+Teleport presentation
+---------------------
+
+During TeleportEffectDelay:
+
+- State becomes TeleportCharge.
+- TeleportChargeEffect activates.
+- A Niagara user float, normally User.TeleportCharge, moves from 0 to 1.
+- TeleportChargeExponent shapes how quickly the visible charge grows.
+- After ImplosionStartCharge, the inherited mesh shrinks toward
+  ImplosionMinimumScale.
+- ImplosionExponent shapes the shrink curve.
+
+At completion, the optional departure effect spawns, TeleportTo performs the
+move, the mesh scale is restored, and the optional arrival effect spawns.
+
+Teleporter AoE attack
+---------------------
+
+The teleporter checks for an AoE opportunity on a timer. The default interval
+is 0.1 seconds.
+
+The attack begins only when:
+
+- No AoE is already winding up.
+- No teleport is in progress.
+- AoECooldown has expired.
+- The player is within AoERadius in the X/Z plane.
+- Coordinator attack permission is acquired.
+
+The warning Niagara component activates during AoEWindupDuration. When the
+windup ends, the warning deactivates and attack permission is released. The
+player's position is checked again. AoEDamage is applied only if the player is
+still inside the radius.
+
+Defaults:
+
+- AoERadius: 250 cm.
+- AoEDamage: 1.
+- AoEWindupDuration: 0.75 seconds.
+- AoECooldown: 2 seconds.
+- AoECheckInterval: 0.1 seconds.
+
+
+9. COLOR, HEALTH, ELIMINATION, AND PLATFORM EFFECTS
+==================================================
+
+Enemy color
+-----------
+
+Every base enemy owns URGBColorComponent. Its current RGB color determines:
+
+- Which projectile color can damage it.
+- Which base and emission materials are assigned.
+- Which color a grounded enemy transfers to its supporting platform when it is
+  eliminated.
+
+Color-hit validation
+--------------------
+
+RecieveColorHit rejects a hit when:
+
+- The enemy has already been eliminated.
+- The ColorComponent is invalid.
+- The projectile color does not match the enemy's current color.
+
+A matching hit subtracts one health. When health reaches zero:
+
+1. The enemy becomes Disabled.
+2. Attack permission is released.
+3. Movement stops.
+4. A supporting-platform color transfer is attempted.
+5. OnEnemyEliminated broadcasts.
+6. The actor is destroyed.
+
+Platform color transfer
+-----------------------
+
+The base implementation transfers color only when CharacterMovement reports
+that the enemy is moving on the ground and the current floor actor is an
+ARGBColorPlatform.
+
+Consequences:
+
+- Ground enemies can transfer their color to the platform beneath them.
+- A flying enemy normally has no walkable current floor and therefore does not
+  transfer color when destroyed in the air.
+- A teleporter can transfer color if it is considered grounded on an RGB color
+  platform when eliminated.
+
+
+10. ENEMY RESPAWN AND ARENA LIFECYCLE
+=====================================
+
+Spawn records
+-------------
+
+ARGBArenaControl records an enemy's class and full spawn transform. Equivalent
+class/transform records are reused instead of duplicated.
+
+Elimination handling
+--------------------
+
+When OnEnemyEliminated fires, the arena:
+
+- Finds the enemy's spawn record.
+- Unregisters it from the coordinator.
+- Clears its coordinator and camera-zone references.
+- Removes the event binding.
+- Removes the actor from live enemy collections.
+- Starts a respawn timer if respawning is enabled and the arena is active.
+
+EnemyRespawnDelay defaults to 5 seconds. A zero delay schedules the respawn for
+the next Tick rather than recursively spawning during elimination handling.
+
+Respawn
+-------
+
+The enemy is recreated using its recorded class and transform with
+AlwaysSpawn collision handling. The arena then reconnects the new actor to:
+
+- Its spawn record.
+- The elimination event.
+- The camera zone.
+- The coordinator.
+
+Arena reset and completion
+--------------------------
+
+During reset, pending respawn timers are canceled, coordination is cleared,
+live enemies are removed, and the recorded enemies are recreated when reset
+finishes.
+
+When the arena completes, pending respawns are canceled, coordination is reset,
+and remaining enemies are despawned without triggering ordinary color-hit
+elimination behavior.
+
+
+11. BLUEPRINT AND LEVEL-DESIGN RESPONSIBILITIES
+===============================================
+
+C++ owns authoritative AI rules. Blueprints and levels provide configuration
+and presentation assets.
+
+Base enemy configuration
+------------------------
+
+Important inherited settings include:
+
+- Patrol Enabled.
+- Edge Look Ahead.
+- Max Patrol Drop.
+- Detection Range.
+- Lose Interest Range.
+- Detection Height Tolerance.
+- Stop Distance From Player.
+- Turn Montage.
+- Attack Montage.
+- Attack Cooldown.
+- Attack Play Rate.
+- Attack Damage.
+- Attack Hit Delay.
+- Attack Hit Range Padding.
+- Attack Duration.
+- Max Health.
+- Initial enemy color and color materials.
+
+Flying-enemy configuration
+---------------------------
+
+Important flyer settings include:
+
+- Maximum Flight Speed.
+- Flight Acceleration.
+- Flight Deceleration.
+- Player Arrival Radius.
+- Player Tracking Weight.
+- Target Refresh Interval.
+- Enemy Separation Radius.
+- Enemy Separation Weight.
+- Obstacle Probe Distance.
+- Obstacle Probe Radius Scale.
+- Obstacle Avoidance Weight.
+- Orient Visual To Flight Direction.
+- Visual Rotation Speed.
+- The FlyingBody static mesh and materials.
+
+Teleporter configuration
+------------------------
+
+Important teleporter settings include:
+
+- Minimum and Maximum Teleport Idle Time.
+- Teleport Point Search Radius.
+- Minimum Teleport Distance.
+- Teleport Point Tag.
+- Teleport Occupancy Padding.
+- Player Proximity Weight.
+- Teleport Effect Delay.
+- Charge/arrival/departure Niagara systems.
+- Charge parameter and curve values.
+- Implosion timing and scale values.
+- AoE radius, damage, windup, cooldown, and warning effect.
+
+Arena setup requirements
+------------------------
+
+For full coordination and lifecycle behavior:
+
+- Place an ARGBArenaControl or its Blueprint subclass.
+- Assign its ArenaCameraZone.
+- Add initially placed enemies to AssignedEnemies, or spawn later enemies
+  inside the zone after arena startup.
+- Set enemy respawn behavior and delay on the arena control.
+- Place and tag Target Points for each teleporter network.
+- Ensure blocking level geometry responds to the Pawn collision channel.
+- Ensure visual and Niagara assets are assigned in Blueprint defaults.
+
+
+12. PERFORMANCE AND RELIABILITY CHARACTERISTICS
+================================================
+
+The design avoids several expensive or fragile patterns:
+
+- Group assignment uses a timer instead of per-frame world-wide decision logic.
+- Ground detection uses a 0.1-second timer.
+- Flying target lookup uses a configurable timer.
+- Teleporter AoE checks use a configurable timer.
+- Teleport points are discovered once at BeginPlay.
+- Flying camera-zone fallback discovery occurs once at BeginPlay.
+- UObject references that may disappear are stored as weak pointers where
+  appropriate.
+- Attack and teleport actions revalidate their targets at the moment of effect.
+- Target reservations prevent simultaneous destination selection.
+- Assignment leases prevent enemies from trusting stale coordinator data.
+- Collision movement uses sweeps rather than unswept location changes, except
+  for the deliberate validated TeleportTo action.
+
+
+13. CURRENT LIMITATIONS AND FUTURE EXTENSIONS
+=============================================
+
+The following points describe the present implementation accurately and should
+not be presented as completed features:
+
+1. There is no Behavior Tree, Blackboard, EQS query, or NavMesh-based planner.
+
+2. Ground enemies cannot navigate between separated platforms. They patrol and
+   pursue only on locally reachable ground.
+
+3. The planned puzzle-aware sabotage system is not implemented yet. Enemies do
+   not currently score platform colors or choose actions based on predicted
+   arena progress.
+
+4. Cannon-aware intentional sacrifice behavior remains future work.
+
+5. Flying pressure-slot target locations are calculated by the coordinator but
+   are not yet used for flight movement. Flyers track the player's live
+   position and use coordination for attack permission.
+
+6. Flying obstacle avoidance is local steering. It does not build a complete
+   path around complex mazes and can become trapped in geometry that requires a
+   long detour beyond its probe choices.
+
+7. Enemy separation is a steering influence, not a guaranteed formation
+   solver. Tight spaces can still compress enemies.
+
+8. Teleporter destination occupancy checks use Pawn overlap. Level designers
+   must place Target Points at valid floor positions and keep their surrounding
+   geometry suitable for the capsule.
+
+9. Flying enemies normally do not transfer color to platforms because they are
+   not grounded when eliminated.
+
+10. The shared system is designed for local single-player play. Networking and
+    authority replication have not been implemented.
+
+
+14. SUGGESTED PRESENTATION STRUCTURE
+====================================
+
+The system can be presented clearly in the following order:
+
+Slide 1: Design goal
+    Explain that multiple enemy types should pressure the player without all
+    selecting the same position or attacking simultaneously.
+
+Slide 2: Two-level architecture
+    Show the arena coordinator above several autonomous enemy actors. Explain
+    that the coordinator manages shared resources while each enemy owns its
+    local movement and attack execution.
+
+Slide 3: Shared state vocabulary
+    Present the action states and the three coordination roles.
+
+Slide 4: Attacker and pressure selection
+    Explain distance sorting, commitment time, melee slots, pressure slots, and
+    the simultaneous-attacker limit.
+
+Slide 5: Ground enemy
+    Show patrol, ledge/wall probing, player detection, chase, attack windup,
+    damage, and cooldown.
+
+Slide 6: Teleporter enemy
+    Show authored points, candidate rejection, weighted randomness, reservation,
+    charge, teleport, and AoE warning.
+
+Slide 7: Flying enemy
+    Show player pursuit plus separation plus obstacle avoidance, followed by
+    swept movement and camera-zone clamping.
+
+Slide 8: Combat and color integration
+    Explain matching-color damage, health, elimination, platform transfer, and
+    the difference between grounded and flying elimination.
+
+Slide 9: Arena lifecycle
+    Explain registration, elimination events, delayed respawn, reset, and arena
+    completion cleanup.
+
+Slide 10: Strengths and limitations
+    Present the system as an explicit, debuggable C++ foundation and identify
+    platform traversal, puzzle-aware decisions, and advanced path planning as
+    future development.
+
+
+15. SHORT SUMMARY FOR SPEAKING NOTES
+====================================
+
+RGB uses an arena-scoped multi-agent coordinator combined with autonomous enemy
+actors. The coordinator regularly observes the player and registered enemies,
+selects a limited number of attackers, assigns other enemies to pressure roles,
+and manages shared attack permissions and destination reservations. Each enemy
+variant then performs its own specialized behavior. Ground enemies patrol and
+use local collision probes, teleporters choose among authored points using a
+blend of player proximity and randomness, and flying enemies pursue in the X/Z
+plane using separation, obstacle avoidance, swept movement, and camera-zone
+confinement. Attacks are timer-driven and revalidate range at the damage moment.
+The arena owns enemy registration, elimination tracking, delayed respawn, reset,
+and completion cleanup. This creates a modular C++ base that can later grow into
+puzzle-aware sabotage, authored platform traversal, and cannon-aware tactics.
+
+
+Primary source files
+====================
+
+Source/RGB/AI/RGBEnemyAITypes.h
+Source/RGB/AI/RGBArenaEnemyCoordinatorComponent.h
+Source/RGB/AI/RGBArenaEnemyCoordinatorComponent.cpp
+Source/RGB/AI/RGBEnemyCharacter.h
+Source/RGB/AI/RGBEnemyCharacter.cpp
+Source/RGB/AI/RGBTeleporterEnemyCharacter.h
+Source/RGB/AI/RGBTeleporterEnemyCharacter.cpp
+Source/RGB/AI/RGBFlyingEnemyCharacter.h
+Source/RGB/AI/RGBFlyingEnemyCharacter.cpp
+Source/RGB/Arena/RGBArenaControl.h
+Source/RGB/Arena/RGBArenaControl.cpp
+Source/RGB/Camera/RGBArenaCameraZone.h
+Source/RGB/Camera/RGBArenaCameraZone.cpp
+Source/RGB/Player/RGBPlayerCharacter.h
+Source/RGB/Player/RGBPlayerCharacter.cpp
+

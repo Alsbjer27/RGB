@@ -31,6 +31,9 @@ bool ARGBGameMode::RespawnPlayer(AController* PlayerController)
 	if (!IsValid(PlayerController)) {
 		return false;
 	}
+
+	ERGBColor PreviousSelectedWeaponColor = ERGBColor::Red;
+	bool bHasPreviousWeaponColor = false;
 	
 	const ARGBCheckpoint* Checkpoint = ActiveCheckpoint.Get();
 	AActor* PlayerStart = nullptr;
@@ -45,7 +48,14 @@ bool ARGBGameMode::RespawnPlayer(AController* PlayerController)
 		}
 	}
 
-	if (APawn* OldPawn = PlayerController->GetPawn()) {
+	if (APawn* OldPawn = PlayerController->GetPawn())
+	{
+		if (ARGBPlayerCharacter* OldCharacter = Cast<ARGBPlayerCharacter>(OldPawn))
+		{
+			PreviousSelectedWeaponColor = OldCharacter->GetSelectedWeaponColor();
+			bHasPreviousWeaponColor = true;
+		}
+
 		PlayerController->UnPossess();
 		OldPawn->Destroy();
 	}
@@ -55,6 +65,14 @@ bool ARGBGameMode::RespawnPlayer(AController* PlayerController)
 	}
 	else {
 		RestartPlayerAtPlayerStart(PlayerController, PlayerStart);
+	}
+
+	if (bHasPreviousWeaponColor)
+	{
+		if (ARGBPlayerCharacter* NewCharacter = Cast<ARGBPlayerCharacter>(PlayerController->GetPawn()))
+		{
+			NewCharacter->RestoreSelectedWeaponColor(PreviousSelectedWeaponColor);
+		}
 	}
 
 	const bool bRespawnSucceeded = IsValid(PlayerController->GetPawn());

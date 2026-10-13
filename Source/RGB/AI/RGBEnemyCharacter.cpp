@@ -2,6 +2,7 @@
 
 
 #include "RGBEnemyCharacter.h"
+#include "RGBArenaEnemyCoordinatorComponent.h"
 
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -59,11 +60,23 @@ ARGBEnemyCharacter::ARGBEnemyCharacter()
 	Movement->bCanWalkOffLedges = false;
 }
 
+bool ARGBEnemyCharacter::HasEnemyCoordinator() const
+{
+	return IsValid(EnemyCoordinator.Get());
+}
+
 void ARGBEnemyCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
 	UCharacterMovementComponent* Movement = GetCharacterMovement();
+
+	if (!bArenaAIActive) {
+		ConsumeMovementInputVector();
+		Movement->StopMovementImmediately();
+		SetActionState(ERGBEnemyActionState::Idle);
+		return;
+	}
 
 	if (bAttacking) {
 		ConsumeMovementInputVector();
@@ -72,11 +85,11 @@ void ARGBEnemyCharacter::Tick(float DeltaTime)
 			Movement->StopMovementImmediately();
 		}
 
-		UpdateAttack();
 		return;
 	}
 
 	if (bTurning) {
+		SetActionState(ERGBEnemyActionState::Turning);
 		ConsumeMovementInputVector();
 
 		if (Movement->IsMovingOnGround()) {
@@ -88,6 +101,7 @@ void ARGBEnemyCharacter::Tick(float DeltaTime)
 	}
 
 	if (!bPatrolEnabled) {
+		SetActionState(ERGBEnemyActionState::Idle);
 		if (Movement->IsMovingOnGround()) {
 			Movement->StopMovementImmediately();
 		}
@@ -95,10 +109,16 @@ void ARGBEnemyCharacter::Tick(float DeltaTime)
 	}
 
 	if (!Movement->IsMovingOnGround()) {
+		SetActionState(ERGBEnemyActionState::Idle);
+		return;
+	}
+
+	if (UpdateCoordinatedMovement(DeltaTime)) {
 		return;
 	}
 
 	if (ACharacter* Player = TargetPlayer.Get()) {
+		SetActionState(ERGBEnemyActionState::Chase);
 		const float DifferenceX =
 			Player->GetActorLocation().X - GetActorLocation().X;
 
@@ -129,6 +149,7 @@ void ARGBEnemyCharacter::Tick(float DeltaTime)
 		AddMovementInput(FVector::ForwardVector, PatrolDirection);
 		return;
 	}
+	SetActionState(ERGBEnemyActionState::Patrol);
 
 	if (!CanWalkInDirection(PatrolDirection, DeltaTime)) {
 		Movement->StopMovementImmediately();
@@ -160,11 +181,14 @@ bool ARGBEnemyCharacter::RecieveColorHit(ERGBColor ProjectileColor)
 	}
 
 	bEliminated = true;
+	SetActionState(ERGBEnemyActionState::Disabled);
+	ReleaseCoordinatedAttackPermission();
 
 	GetCharacterMovement()->StopMovementImmediately();
 	ConsumeMovementInputVector();
 
 	TransferColorSupportingPlatform();
+	OnEnemyEliminated.Broadcast(this);
 
 	Destroy();
 	return true;
@@ -177,6 +201,8 @@ void ARGBEnemyCharacter::DespawnForArenaCompletion()
 	}
 
 	bEliminated = true;
+	SetActionState(ERGBEnemyActionState::Disabled);
+	ReleaseCoordinatedAttackPermission();
 
 	GetCharacterMovement()->StopMovementImmediately();
 	ConsumeMovementInputVector();
@@ -190,6 +216,7 @@ void ARGBEnemyCharacter::BeginPlay()
 
 	CurrentHealth = FMath::Max(MaxHealth, 1);
 	bEliminated = false;
+	SetActionState(bPatrolEnabled ? ERGBEnemyActionState::Patrol : ERGBEnemyActionState::Idle);
 
 	if (IsValid(ColorComponent)) {
 		ApplyColorMaterial(ColorComponent->GetCurrentColor());
@@ -215,6 +242,9 @@ void ARGBEnemyCharacter::EndPlay(EEndPlayReason::Type EndPlayReason)
 {
 	GetWorldTimerManager().ClearTimer(DetectionTimer);
 	GetWorldTimerManager().ClearTimer(AttackDamageTimer);
+	GetWorldTimerManager().ClearTimer(AttackFinishTimer);
+	ReleaseCoordinatedAttackPermission();
+	EnemyCoordinator = nullptr;
 	TargetPlayer.Reset();
 	Super::EndPlay(EndPlayReason);
 }
@@ -243,6 +273,139 @@ void ARGBEnemyCharacter::StartAttackAgainst(ACharacter* Player)
 	StartAttack();
 }
 
+void ARGBEnemyCharacter::SetEnemyCoordinator(URGBArenaEnemyCoordinatorComponent* NewCoordinator)
+{
+	if (EnemyCoordinator == NewCoordinator) {
+		return;
+	}
+
+	ReleaseCoordinatedAttackPermission();
+	EnemyCoordinator = NewCoordinator;
+}
+
+void ARGBEnemyCharacter::SetArenaCameraZone(ARGBArenaCameraZone* NewArenaCameraZone)
+{
+	ArenaCameraZone = NewArenaCameraZone;
+}
+
+void ARGBEnemyCharacter::SetArenaAIActive(bool bNewActive)
+{
+	if (bArenaAIActive == bNewActive) {
+		return;
+	}
+
+	bArenaAIActive = bNewActive;
+
+	if (!bArenaAIActive) {
+		GetWorldTimerManager().ClearTimer(AttackDamageTimer);
+		GetWorldTimerManager().ClearTimer(AttackFinishTimer);
+		bAttacking = false;
+		bTurning = false;
+		TargetPlayer.Reset();
+		ConsumeMovementInputVector();
+		GetCharacterMovement()->StopMovementImmediately();
+		ReleaseCoordinatedAttackPermission();
+		SetActionState(ERGBEnemyActionState::Idle);
+
+		if (UAnimInstance* Animation = GetMesh()->GetAnimInstance()) {
+			if (AttackMontage) {
+				Animation->Montage_Stop(0.1f, AttackMontage.Get());
+			}
+			if (TurnMontage) {
+				Animation->Montage_Stop(0.1f, TurnMontage.Get());
+			}
+		}
+	}
+
+	HandleArenaAIActiveChanged(bArenaAIActive);
+}
+
+void ARGBEnemyCharacter::HandleArenaAIActiveChanged(bool bNewActive)
+{
+}
+
+bool ARGBEnemyCharacter::GetCoordinationAssignment(FRGBEnemyCoordinationAssignment& OutAssignment) const
+{
+	return IsValid(EnemyCoordinator) && EnemyCoordinator->GetAssignment(this, OutAssignment);
+}
+
+void ARGBEnemyCharacter::SetActionState(ERGBEnemyActionState NewState)
+{
+	ActionState = NewState;
+}
+
+bool ARGBEnemyCharacter::TryAcquireCoordinatedAttackPermission()
+{
+	return !IsValid(EnemyCoordinator) || EnemyCoordinator->TryAcquireAttackPermission(this);
+}
+
+void ARGBEnemyCharacter::ReleaseCoordinatedAttackPermission()
+{
+	if (IsValid(EnemyCoordinator)) {
+		EnemyCoordinator->ReleaseAttackPermission(this);
+	}
+}
+
+bool ARGBEnemyCharacter::IsCoordinationTargetReservedByOther(const AActor* Target) const
+{
+	return IsValid(EnemyCoordinator) && EnemyCoordinator->IsTargetReservedByOther(this, Target);
+}
+
+bool ARGBEnemyCharacter::TryReserveCoordinationTarget(AActor* Target)
+{
+	return !IsValid(EnemyCoordinator) || EnemyCoordinator->TryReserveTarget(this, Target);
+}
+
+void ARGBEnemyCharacter::ReleaseCoordinationTarget(const AActor* Target)
+{
+	if (IsValid(EnemyCoordinator)) {
+		EnemyCoordinator->ReleaseTargetReservation(this, Target);
+	}
+}
+
+bool ARGBEnemyCharacter::UpdateCoordinatedMovement(float DeltaTime)
+{
+	FRGBEnemyCoordinationAssignment Assignment;
+
+	if (!GetCoordinationAssignment(Assignment) || !Assignment.bHasTargetLocation) {
+		return false;
+	}
+
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	const float DifferenceX = Assignment.TargetLocation.X - GetActorLocation().X;
+	const float SlotTolerance = 10.0f;
+
+	if (FMath::Abs(DifferenceX) <= SlotTolerance) {
+		Movement->StopMovementImmediately();
+		ConsumeMovementInputVector();
+		const bool bAttackCooldownActive = GetWorld()->GetTimeSeconds() < NextAttackAllowedTime;
+		SetActionState(bAttackCooldownActive ? ERGBEnemyActionState::AttackCooldown : Assignment.Role == ERGBEnemyCoordinationRole::MeleeAttacker ? ERGBEnemyActionState::Chase : ERGBEnemyActionState::Idle);
+
+		if (Assignment.bCanAttack) {
+			StartAttackAgainst(UGameplayStatics::GetPlayerCharacter(this, 0));
+		}
+
+		return true;
+	}
+
+	const float DesiredDirection = DifferenceX > 0.0f ? 1.0f : -1.0f;
+
+	if (DesiredDirection != PatrolDirection) {
+		StartTurn(DesiredDirection);
+		return true;
+	}
+
+	SetActionState(ERGBEnemyActionState::Chase);
+
+	if (!CanWalkInDirection(PatrolDirection, DeltaTime)) {
+		Movement->StopMovementImmediately();
+		return true;
+	}
+
+	AddMovementInput(FVector::ForwardVector, PatrolDirection);
+	return true;
+}
+
 bool ARGBEnemyCharacter::CanWalkInDirection(float Direction, float DeltaTime) const
 {
 	const UCapsuleComponent* Capsule = GetCapsuleComponent();
@@ -265,10 +428,6 @@ bool ARGBEnemyCharacter::CanWalkInDirection(float Direction, float DeltaTime) co
 
 	if (bWallAhead)
 	{
-		UE_LOG(LogTemp, Warning,
-			TEXT("Patrol blocked by wall: %s"),
-			*GetNameSafe(WallHit.GetActor()));
-
 		return false;
 	}
 
@@ -289,7 +448,7 @@ void ARGBEnemyCharacter::UpdatePlayerDetection()
 {
 	ACharacter* Player = UGameplayStatics::GetPlayerCharacter(this, 0);
 
-	if (!bPatrolEnabled || !IsValid(Player) || Player == this) {
+	if (!bArenaAIActive || !bPatrolEnabled || !IsValid(Player) || Player == this) {
 		TargetPlayer.Reset();
 		return;
 	}
@@ -361,6 +520,7 @@ void ARGBEnemyCharacter::StartTurn(float NewDirection)
 
 	TurnDuration = TurnMontage->GetPlayLength();
 	bTurning = true;
+	SetActionState(ERGBEnemyActionState::Turning);
 }
 
 void ARGBEnemyCharacter::UpdateTurn(float DeltaTime)
@@ -393,9 +553,7 @@ void ARGBEnemyCharacter::StartAttack()
 		return;
 	}
 
-	UAnimInstance* Animation = GetMesh()->GetAnimInstance();
-
-	if (!Animation || !AttackMontage) {
+	if (!TryAcquireCoordinatedAttackPermission()) {
 		return;
 	}
 
@@ -403,17 +561,20 @@ void ARGBEnemyCharacter::StartAttack()
 	ConsumeMovementInputVector();
 
 	const float SafePlayRate = FMath::Max(AttackPlayRate, 0.01f);
+	UAnimInstance* Animation = GetMesh()->GetAnimInstance();
 
-	if (Animation->Montage_Play(AttackMontage.Get(), SafePlayRate) <= 0.0f) {
-		NextAttackAllowedTime = GetWorld()->GetTimeSeconds() + 1.0;
-		return;
+	if (Animation && AttackMontage) {
+		Animation->Montage_Play(AttackMontage.Get(), SafePlayRate);
 	}
 
 	bAttacking = true;
+	SetActionState(ERGBEnemyActionState::AttackWindup);
 
 	GetWorldTimerManager().ClearTimer(AttackDamageTimer);
+	GetWorldTimerManager().ClearTimer(AttackFinishTimer);
 
-	const float DamageDelay = FMath::Max(AttackHitDelay, 0.0f) / SafePlayRate;
+	const float DamageDelay = FMath::Max(AttackHitDelay, 0.0f);
+	const float SafeAttackDuration = FMath::Max(AttackDuration, DamageDelay + 0.01f);
 
 	if (DamageDelay <= SMALL_NUMBER) {
 		TryApplyAttackDamage();
@@ -421,19 +582,16 @@ void ARGBEnemyCharacter::StartAttack()
 	else {
 		GetWorldTimerManager().SetTimer(AttackDamageTimer, this, &ARGBEnemyCharacter::TryApplyAttackDamage, DamageDelay, false);
 	}
+
+	GetWorldTimerManager().SetTimer(AttackFinishTimer, this, &ARGBEnemyCharacter::FinishAttack, SafeAttackDuration, false);
 }
 
-void ARGBEnemyCharacter::UpdateAttack()
+void ARGBEnemyCharacter::FinishAttack()
 {
-	UAnimInstance* Animation = GetMesh()->GetAnimInstance();
-
-	if (Animation && AttackMontage && Animation->Montage_IsActive(AttackMontage.Get())) {
-		return;
-	}
-
 	bAttacking = false;
-
 	NextAttackAllowedTime = GetWorld()->GetTimeSeconds() + FMath::Max(AttackCooldown, 0.0f);
+	SetActionState(ERGBEnemyActionState::AttackCooldown);
+	ReleaseCoordinatedAttackPermission();
 }
 
 void ARGBEnemyCharacter::TryApplyAttackDamage()

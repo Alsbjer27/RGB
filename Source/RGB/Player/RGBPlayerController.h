@@ -30,10 +30,22 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Input")
 	TObjectPtr<UInputMappingContext> DefaultMappingContext;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Transition", meta = (ClampMin = "0.0", Units = "s"))
+	float InitialFadeInDuration = 2.0f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Transition", meta = (ClampMin = "0.0", Units = "s"))
+	float InitialBlackDelay = 1.5f;
+
 	virtual void SetupInputComponent() override;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Input")
 	TObjectPtr<UInputAction> RestartAction;
 
 	void RestartPlayer();
+
+	void StartInitialFadeIn();
+	void FinishInitialFadeIn();
+
+	FTimerHandle InitialBlackDelayTimerHandle;
+	FTimerHandle InitialFadeInTimerHandle;
 };

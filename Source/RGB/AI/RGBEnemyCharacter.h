@@ -3,12 +3,18 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "RGBEnemyAITypes.h"
 #include "../Platforms/RGBColorComponent.h"
 #include "GameFramework/Character.h"
 #include "RGBEnemyCharacter.generated.h"
 
 class UAnimMontage;
 class UMaterialInterface;
+class ARGBEnemyCharacter;
+class ARGBArenaCameraZone;
+class URGBArenaEnemyCoordinatorComponent;
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FRGBEnemyEliminatedSignature, ARGBEnemyCharacter*, EliminatedEnemy);
 
 UCLASS()
 class RGB_API ARGBEnemyCharacter : public ACharacter
@@ -20,8 +26,18 @@ public:
 	ARGBEnemyCharacter();
 
 	virtual void Tick(float DeltaTime) override;
+	virtual ERGBEnemyMobilityType GetEnemyMobilityType() const { return ERGBEnemyMobilityType::Ground; }
 
 	bool RecieveColorHit(ERGBColor ProjectileColor);
+	void SetEnemyCoordinator(URGBArenaEnemyCoordinatorComponent* NewCoordinator);
+	void SetArenaCameraZone(ARGBArenaCameraZone* NewArenaCameraZone);
+	void SetArenaAIActive(bool bNewActive);
+
+	UFUNCTION(BlueprintPure, Category = "RGB|AI")
+	ERGBEnemyActionState GetActionState() const { return ActionState; }
+
+	UPROPERTY(BlueprintAssignable, Category = "RGB|Enemy")
+	FRGBEnemyEliminatedSignature OnEnemyEliminated;
 
 	void DespawnForArenaCompletion();
 
@@ -71,6 +87,9 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "RGB|Attack")
 	float AttackHitRangePadding = 20.0f;
 
+	UPROPERTY(EditAnywhere, Category = "RGB|Attack", meta = (ClampMin = "0.01", Units = "s"))
+	float AttackDuration = 0.6f;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RGB|Color")
 	TObjectPtr<URGBColorComponent> ColorComponent;
 
@@ -95,8 +114,21 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Health")
 	int32 MaxHealth = 1;
 
-	bool IsPlayerWithinAttackRange(const ACharacter* Player) const;
+	virtual bool IsPlayerWithinAttackRange(const ACharacter* Player) const;
+	virtual void HandleArenaAIActiveChanged(bool bNewActive);
 	void StartAttackAgainst(ACharacter* Player);
+	bool GetCoordinationAssignment(FRGBEnemyCoordinationAssignment& OutAssignment) const;
+	void SetActionState(ERGBEnemyActionState NewState);
+	bool TryAcquireCoordinatedAttackPermission();
+	void ReleaseCoordinatedAttackPermission();
+	bool HasEnemyCoordinator() const;
+	bool IsArenaAIActive() const { return bArenaAIActive; }
+	ARGBArenaCameraZone* GetArenaCameraZone() const { return ArenaCameraZone.Get(); }
+	bool IsCoordinationTargetReservedByOther(const AActor* Target) const;
+	bool TryReserveCoordinationTarget(AActor* Target);
+	void ReleaseCoordinationTarget(const AActor* Target = nullptr);
+	bool IsAttackInProgress() const { return bAttacking; }
+	virtual void ApplyColorMaterial(ERGBColor Color);
 
 
 private:
@@ -114,13 +146,25 @@ private:
 	float TurnStartYaw = 0.0f;
 
 	void StartAttack();
-	void UpdateAttack();
+	void FinishAttack();
+	bool UpdateCoordinatedMovement(float DeltaTime);
 
 	void TryApplyAttackDamage();
 	FTimerHandle AttackDamageTimer;
+	FTimerHandle AttackFinishTimer;
 
 	bool bAttacking = false;
 	double NextAttackAllowedTime = 0.0;
+	bool bArenaAIActive = true;
+
+	UPROPERTY(Transient, VisibleInstanceOnly, Category = "RGB|AI")
+	ERGBEnemyActionState ActionState = ERGBEnemyActionState::Idle;
+
+	UPROPERTY(Transient)
+	TObjectPtr<URGBArenaEnemyCoordinatorComponent> EnemyCoordinator;
+
+	UPROPERTY(Transient)
+	TObjectPtr<ARGBArenaCameraZone> ArenaCameraZone;
 
 	UPROPERTY(Transient)
 	TWeakObjectPtr<ACharacter> TargetPlayer;
@@ -129,8 +173,6 @@ private:
 	int32 CurrentHealth = 1;
 
 	bool bEliminated = false;
-
-	void ApplyColorMaterial(ERGBColor Color);
 
 	void TransferColorSupportingPlatform();
 };
