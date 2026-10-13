@@ -23,6 +23,8 @@ class UMaterialInterface;
 
 class USoundBase;
 
+class URGBDashAfterimageComponent;
+
 enum class ERGBPlayerAbility : uint8;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FRGBWeaponColorChangedSignature, ERGBColor, NewColor);
@@ -43,6 +45,8 @@ public:
 	UFUNCTION(BlueprintPure, Category = "RGB|Combat")
 	ERGBColor GetSelectedWeaponColor() const { return SelectedWeaponColor; }
 
+	void RestoreSelectedWeaponColor(ERGBColor NewColor);
+
 	UPROPERTY(BlueprintAssignable, Category = "RGB|Color")
 	FRGBWeaponColorChangedSignature OnWeaponColorChanged;
 
@@ -59,6 +63,11 @@ public:
 	int32 GetMaxHealth() const { return MaxHealth; }
 
 	bool GrantAbility(ERGBPlayerAbility Ability);
+
+	void ApplyScriptedHorizontalInput(float InputAmount);
+	void StartScriptedJump();
+	void StopScriptedJump();
+
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
@@ -134,6 +143,9 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Health")
 	int32 MaxHealth = 3;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RGB|Dash Afterimage")
+	TObjectPtr<URGBDashAfterimageComponent> DashAfterimageComponent;
 
 
 private:

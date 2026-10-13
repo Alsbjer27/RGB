@@ -63,6 +63,27 @@ bool ARGBArenaCameraZone::ContainWorldLocation(const FVector& WorldLocation) con
 	return FMath::Abs(LocalLocation.X) <= Extent.X && FMath::Abs(LocalLocation.Y) <= Extent.Y && FMath::Abs(LocalLocation.Z) <= Extent.Z;
 }
 
+FVector ARGBArenaCameraZone::ClampWorldLocation(const FVector& WorldLocation, const FVector& WorldPadding) const
+{
+	if (!IsValid(ArenaBounds)) {
+		return WorldLocation;
+	}
+
+	const FTransform BoundsTransform = ArenaBounds->GetComponentTransform();
+	FVector LocalLocation = BoundsTransform.InverseTransformPosition(WorldLocation);
+	const FVector Extent = ArenaBounds->GetUnscaledBoxExtent();
+	const FVector Scale = BoundsTransform.GetScale3D().GetAbs();
+	const FVector SafeScale(FMath::Max(Scale.X, SMALL_NUMBER), FMath::Max(Scale.Y, SMALL_NUMBER), FMath::Max(Scale.Z, SMALL_NUMBER));
+	const FVector LocalPadding = WorldPadding.GetAbs() / SafeScale;
+	const FVector SafeExtent(FMath::Max(Extent.X - LocalPadding.X, 0.0f), FMath::Max(Extent.Y - LocalPadding.Y, 0.0f), FMath::Max(Extent.Z - LocalPadding.Z, 0.0f));
+
+	LocalLocation.X = FMath::Clamp(LocalLocation.X, -SafeExtent.X, SafeExtent.X);
+	LocalLocation.Y = FMath::Clamp(LocalLocation.Y, -SafeExtent.Y, SafeExtent.Y);
+	LocalLocation.Z = FMath::Clamp(LocalLocation.Z, -SafeExtent.Z, SafeExtent.Z);
+
+	return BoundsTransform.TransformPosition(LocalLocation);
+}
+
 void ARGBArenaCameraZone::BeginPlay()
 {
 	Super::BeginPlay();
@@ -120,11 +141,13 @@ void ARGBArenaCameraZone::UpdateCameraZone()
 		if (!bArenaViewActive || bPlayerChanged) {
 			PlayerController->SetViewTargetWithBlend(this, BlendDuration, VTBlend_EaseInOut, 2.0f, true);
 			bArenaViewActive = true;
+			OnPlayerEnteredZone.Broadcast();
 		}
 	}
 	else if (bArenaViewActive) {
 		PlayerController->SetViewTargetWithBlend(Player, BlendDuration, VTBlend_EaseInOut, 2.0f, true);
 		bArenaViewActive = false;
+		OnPlayerExitedZone.Broadcast();
 		SetActorTickEnabled(false);
 	}
 }

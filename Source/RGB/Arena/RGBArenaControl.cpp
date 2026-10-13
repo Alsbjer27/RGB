@@ -9,6 +9,7 @@
 #include "../Platforms/RGBColorPlatform.h"
 
 #include "../AI/RGBEnemyCharacter.h"
+#include "../AI/RGBArenaEnemyCoordinatorComponent.h"
 #include "Engine/World.h"
 
 #include "Kismet/GameplayStatics.h"
@@ -21,6 +22,8 @@ ARGBArenaControl::ARGBArenaControl()
 
 	SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
 	SetRootComponent(SceneRoot);
+
+	EnemyCoordinator = CreateDefaultSubobject<URGBArenaEnemyCoordinatorComponent>(TEXT("EnemyCoordinator"));
 
 	ProgressText = CreateDefaultSubobject<UTextRenderComponent>(TEXT("ProgressText"));
 	ProgressText->SetupAttachment(SceneRoot);
@@ -36,6 +39,11 @@ ARGBArenaControl::ARGBArenaControl()
 void ARGBArenaControl::BeginArenaReset()
 {
 	GetWorldTimerManager().ClearTimer(InitialEvaluationTimer);
+	ClearEnemyRespawnTimers();
+
+	if (IsValid(EnemyCoordinator)) {
+		EnemyCoordinator->ResetCoordination();
+	}
 
 	bResetInProgress = true;
 	bCompleted = false;
@@ -55,11 +63,13 @@ void ARGBArenaControl::BeginArenaReset()
 
 	for (ARGBEnemyCharacter* Enemy : AssignedEnemies) {
 		if (IsValid(Enemy)) {
+			Enemy->OnEnemyEliminated.RemoveDynamic(this, &ARGBArenaControl::HandleEnemyEliminated);
 			Enemy->DespawnForArenaCompletion();
 		}
 	}
 
 	AssignedEnemies.Reset();
+	EnemySpawnRecordIndices.Reset();
 	bEnemiesNeedRespawn = true;
 }
 
@@ -94,6 +104,12 @@ void ARGBArenaControl::BeginPlay()
 		RecordEnemySpawn(Enemy);
 	}
 
+	if (IsValid(ArenaCameraZone))
+	{
+		ArenaCameraZone->OnPlayerEnteredZone.AddUniqueDynamic(this, &ARGBArenaControl::HandlePlayerEnteredArenaZone);
+		ArenaCameraZone->OnPlayerExitedZone.AddUniqueDynamic(this, &ARGBArenaControl::HandlePlayerExitedArenaZone);
+	}
+
 	InitialEvaluationTimer = GetWorldTimerManager().SetTimerForNextTick(this, &ARGBArenaControl::FinishArenaReset);
 
 	if (UWorld* World = GetWorld()) {
@@ -104,6 +120,11 @@ void ARGBArenaControl::BeginPlay()
 void ARGBArenaControl::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	GetWorldTimerManager().ClearTimer(InitialEvaluationTimer);
+	ClearEnemyRespawnTimers();
+
+	if (IsValid(EnemyCoordinator)) {
+		EnemyCoordinator->ResetCoordination();
+	}
 
 	if (ActorSpawnedHandle.IsValid()) {
 		if (UWorld* World = GetWorld()) {
@@ -122,6 +143,21 @@ void ARGBArenaControl::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		}
 		Platform->OnDestroyed.RemoveDynamic(this, &ARGBArenaControl::HandlePlatformDestroyed);
 	}
+
+	if (IsValid(ArenaCameraZone))
+	{
+		ArenaCameraZone->OnPlayerEnteredZone.RemoveDynamic(this, &ARGBArenaControl::HandlePlayerEnteredArenaZone);
+		ArenaCameraZone->OnPlayerExitedZone.RemoveDynamic(this, &ARGBArenaControl::HandlePlayerExitedArenaZone);
+	}
+
+	for (ARGBEnemyCharacter* Enemy : AssignedEnemies) {
+		if (IsValid(Enemy)) {
+			Enemy->OnEnemyEliminated.RemoveDynamic(this, &ARGBArenaControl::HandleEnemyEliminated);
+		}
+	}
+
+	EnemySpawnRecordIndices.Reset();
+
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -215,6 +251,12 @@ void ARGBArenaControl::CompleteArena()
 		return;
 	}
 
+	ClearEnemyRespawnTimers();
+
+	if (IsValid(EnemyCoordinator)) {
+		EnemyCoordinator->ResetCoordination();
+	}
+
 	bCompleted = true;
 
 	if (IsValid(ArenaCompletedSound)) {
@@ -231,9 +273,12 @@ void ARGBArenaControl::CompleteArena()
 
 	for (ARGBEnemyCharacter* Enemy : AssignedEnemies) {
 		if (IsValid(Enemy)) {
+			Enemy->OnEnemyEliminated.RemoveDynamic(this, &ARGBArenaControl::HandleEnemyEliminated);
 			Enemy->DespawnForArenaCompletion();
 		}
 	}
+
+	EnemySpawnRecordIndices.Reset();
 
 	ProgressText->SetText(FText::FromString(TEXT("Progress: 100.0% - Completed")));
 	OnArenaCompleted.Broadcast();
@@ -270,45 +315,154 @@ void ARGBArenaControl::RecordEnemySpawn(ARGBEnemyCharacter* Enemy)
 
 	const TSubclassOf<ARGBEnemyCharacter> EnemyClass = Enemy->GetClass();
 	const FTransform SpawnTransform = Enemy->GetActorTransform();
+	int32 SpawnRecordIndex = INDEX_NONE;
 
-	for (const FRGBArenaEnemySpawnRecord& ExistingRecord : EnemySpawnRecord) {
+	for (int32 Index = 0; Index < EnemySpawnRecord.Num(); ++Index) {
+		const FRGBArenaEnemySpawnRecord& ExistingRecord = EnemySpawnRecord[Index];
+
 		if (ExistingRecord.EnemyClass == EnemyClass && ExistingRecord.SpawnTransform.Equals(SpawnTransform)) {
-			return;
+			SpawnRecordIndex = Index;
+			break;
 		}
 	}
 
-	FRGBArenaEnemySpawnRecord NewRecord;
-	NewRecord.EnemyClass = EnemyClass;
-	NewRecord.SpawnTransform = SpawnTransform;
+	if (SpawnRecordIndex == INDEX_NONE) {
+		FRGBArenaEnemySpawnRecord NewRecord;
+		NewRecord.EnemyClass = EnemyClass;
+		NewRecord.SpawnTransform = SpawnTransform;
+		SpawnRecordIndex = EnemySpawnRecord.Add(NewRecord);
+	}
 
-	EnemySpawnRecord.Add(NewRecord);
+	TrackEnemySpawnRecord(Enemy, SpawnRecordIndex);
 }
 
 void ARGBArenaControl::RespawnRecordedEnemy()
 {
-	UWorld* World = GetWorld();
+	for (int32 SpawnRecordIndex = 0; SpawnRecordIndex < EnemySpawnRecord.Num(); ++SpawnRecordIndex) {
+		RespawnEnemyFromRecord(SpawnRecordIndex);
+	}
+}
 
-	if (!IsValid(World)) {
+void ARGBArenaControl::HandlePlayerEnteredArenaZone()
+{
+	bPlayerInsideArena = true;
+
+	for (ARGBEnemyCharacter* Enemy : AssignedEnemies) {
+		if (IsValid(Enemy)) {
+			Enemy->SetArenaAIActive(true);
+		}
+	}
+
+	const float DisplayProgress = bCompleted ? 1.0f : GetCompletionFraction();
+	OnArenaProgressChanged.Broadcast(DisplayProgress);
+}
+
+void ARGBArenaControl::HandlePlayerExitedArenaZone()
+{
+	bPlayerInsideArena = false;
+
+	for (ARGBEnemyCharacter* Enemy : AssignedEnemies) {
+		if (IsValid(Enemy)) {
+			Enemy->SetArenaAIActive(false);
+		}
+	}
+
+	OnArenaProgressChanged.Broadcast(0.0f);
+}
+
+void ARGBArenaControl::TrackEnemySpawnRecord(ARGBEnemyCharacter* Enemy, int32 SpawnRecordIndex)
+{
+	if (!IsValid(Enemy) || !EnemySpawnRecord.IsValidIndex(SpawnRecordIndex)) {
 		return;
 	}
 
-	bRespawningEnemies = true;
+	AssignedEnemies.AddUnique(Enemy);
+	EnemySpawnRecordIndices.Add(Enemy, SpawnRecordIndex);
+	Enemy->OnEnemyEliminated.AddUniqueDynamic(this, &ARGBArenaControl::HandleEnemyEliminated);
+	Enemy->SetArenaCameraZone(ArenaCameraZone);
+	Enemy->SetEnemyCoordinator(EnemyCoordinator);
+	Enemy->SetArenaAIActive(bPlayerInsideArena);
 
-	for (const FRGBArenaEnemySpawnRecord& Record : EnemySpawnRecord) {
-		if (!Record.EnemyClass) {
-			continue;
-		}
-
-		FActorSpawnParameters SpawnParameters;
-		SpawnParameters.Owner = this;
-		SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-		SpawnParameters.TransformScaleMethod = ESpawnActorScaleMethod::OverrideRootScale;
-
-		ARGBEnemyCharacter* Enemy = World->SpawnActor<ARGBEnemyCharacter>(Record.EnemyClass, Record.SpawnTransform, SpawnParameters);
-
-		if (IsValid(Enemy)) {
-			AssignedEnemies.AddUnique(Enemy);
-		}
+	if (IsValid(EnemyCoordinator)) {
+		EnemyCoordinator->RegisterEnemy(Enemy, Enemy->GetEnemyMobilityType());
 	}
-	bRespawningEnemies = false;
+}
+
+void ARGBArenaControl::HandleEnemyEliminated(ARGBEnemyCharacter* EliminatedEnemy)
+{
+	if (!IsValid(EliminatedEnemy)) {
+		return;
+	}
+
+	const int32* FoundSpawnRecordIndex = EnemySpawnRecordIndices.Find(EliminatedEnemy);
+
+	if (!FoundSpawnRecordIndex) {
+		return;
+	}
+
+	const int32 SpawnRecordIndex = *FoundSpawnRecordIndex;
+
+	if (IsValid(EnemyCoordinator)) {
+		EnemyCoordinator->UnregisterEnemy(EliminatedEnemy);
+	}
+
+	EliminatedEnemy->SetEnemyCoordinator(nullptr);
+	EliminatedEnemy->SetArenaCameraZone(nullptr);
+	EliminatedEnemy->OnEnemyEliminated.RemoveDynamic(this, &ARGBArenaControl::HandleEnemyEliminated);
+	EnemySpawnRecordIndices.Remove(EliminatedEnemy);
+	AssignedEnemies.Remove(EliminatedEnemy);
+
+	if (!bRespawnEliminatedEnemies || bCompleted || bResetInProgress || !EnemySpawnRecord.IsValidIndex(SpawnRecordIndex)) {
+		return;
+	}
+
+	FTimerDelegate RespawnDelegate;
+	RespawnDelegate.BindUObject(this, &ARGBArenaControl::RespawnEnemyFromRecord, SpawnRecordIndex);
+
+	const float SafeRespawnDelay = FMath::Max(EnemyRespawnDelay, 0.0f);
+
+	if (SafeRespawnDelay <= SMALL_NUMBER) {
+		EnemyRespawnTimers.Add(SpawnRecordIndex, GetWorldTimerManager().SetTimerForNextTick(RespawnDelegate));
+		return;
+	}
+
+	FTimerHandle& RespawnTimer = EnemyRespawnTimers.FindOrAdd(SpawnRecordIndex);
+	GetWorldTimerManager().SetTimer(RespawnTimer, RespawnDelegate, SafeRespawnDelay, false);
+}
+
+void ARGBArenaControl::RespawnEnemyFromRecord(int32 SpawnRecordIndex)
+{
+	EnemyRespawnTimers.Remove(SpawnRecordIndex);
+
+	if (bCompleted || !EnemySpawnRecord.IsValidIndex(SpawnRecordIndex)) {
+		return;
+	}
+
+	UWorld* World = GetWorld();
+	const FRGBArenaEnemySpawnRecord& Record = EnemySpawnRecord[SpawnRecordIndex];
+
+	if (!IsValid(World) || !Record.EnemyClass) {
+		return;
+	}
+
+	FActorSpawnParameters SpawnParameters;
+	SpawnParameters.Owner = this;
+	SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	SpawnParameters.TransformScaleMethod = ESpawnActorScaleMethod::OverrideRootScale;
+
+	const bool bWasRespawningEnemies = bRespawningEnemies;
+	bRespawningEnemies = true;
+	ARGBEnemyCharacter* Enemy = World->SpawnActor<ARGBEnemyCharacter>(Record.EnemyClass, Record.SpawnTransform, SpawnParameters);
+	bRespawningEnemies = bWasRespawningEnemies;
+
+	TrackEnemySpawnRecord(Enemy, SpawnRecordIndex);
+}
+
+void ARGBArenaControl::ClearEnemyRespawnTimers()
+{
+	for (TPair<int32, FTimerHandle>& RespawnTimer : EnemyRespawnTimers) {
+		GetWorldTimerManager().ClearTimer(RespawnTimer.Value);
+	}
+
+	EnemyRespawnTimers.Reset();
 }

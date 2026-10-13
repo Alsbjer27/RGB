@@ -27,7 +27,7 @@
 
 #include "Kismet/GameplayStatics.h"
 
-
+#include "RGBDashAfterimageComponent.h"
 
 // Sets default values
 ARGBPlayerCharacter::ARGBPlayerCharacter(const FObjectInitializer& ObjectInitializer) 
@@ -78,6 +78,8 @@ ARGBPlayerCharacter::ARGBPlayerCharacter(const FObjectInitializer& ObjectInitial
 	SideViewCamera->ProjectionMode = ECameraProjectionMode::Perspective;
 	SideViewCamera->FieldOfView = 60.0f;
 	SideViewCamera->bUsePawnControlRotation = false;
+
+	DashAfterimageComponent = CreateDefaultSubobject<URGBDashAfterimageComponent>(TEXT("DashAfterimageComponent"));
 }
 
 void ARGBPlayerCharacter::FellOutOfWorld(const UDamageType& DamageType)
@@ -173,6 +175,30 @@ bool ARGBPlayerCharacter::GrantAbility(ERGBPlayerAbility Ability)
 	return true;
 }
 
+void ARGBPlayerCharacter::ApplyScriptedHorizontalInput(float InputAmount)
+{
+	const float ClampedInput = FMath::Clamp(InputAmount, -1.0f, 1.0f);
+
+	if (!FMath::IsNearlyZero(ClampedInput)) {
+		LastFacingDirection = ClampedInput > 0.0f ? 1.0f : -1.0f;
+		const float FacingYaw = ClampedInput > 0.0f ? 180.0f : 0.0f;
+
+		GetMesh()->SetRelativeRotation(FRotator(0.0f, FacingYaw, 0.0f));
+	}
+
+	AddMovementInput(FVector::ForwardVector, ClampedInput);
+}
+
+void ARGBPlayerCharacter::StartScriptedJump()
+{
+	StartJump();
+}
+
+void ARGBPlayerCharacter::StopScriptedJump()
+{
+	EndJump();
+}
+
 // Called when the game starts or when spawned
 void ARGBPlayerCharacter::BeginPlay()
 {
@@ -236,16 +262,7 @@ void ARGBPlayerCharacter::OnJumped_Implementation()
 
 void ARGBPlayerCharacter::Move(const FInputActionValue& Value)
 {
-	const float MoveAmount = FMath::Clamp(Value.Get<float>(), -1.0f, 1.0f);
-
-	if (!FMath::IsNearlyZero(MoveAmount)) {
-		LastFacingDirection = MoveAmount > 0.0f ? 1.0 : -1.0f;
-
-		const float FacingYaw = MoveAmount > 0.0f ? 180.0f : 0.0f;
-		GetMesh()->SetRelativeRotation(FRotator(0.0f, FacingYaw, 0.0f));
-	}
-
-	AddMovementInput(FVector::ForwardVector, MoveAmount);
+	ApplyScriptedHorizontalInput(Value.Get<float>());
 }
 
 void ARGBPlayerCharacter::StartJump()
@@ -281,6 +298,10 @@ void ARGBPlayerCharacter::StartDash()
 	if (RGBMovement->TryStartAirDash(DashDirection)) {
 		LastFacingDirection = DashDirection;
 		BufferedJumpExpiresAt = -1.0f;
+
+		if (IsValid(DashAfterimageComponent)) {
+			DashAfterimageComponent->StartTrail();
+		}
 
 		if (IsValid(DashSound)) {
 			UGameplayStatics::PlaySoundAtLocation(this, DashSound, GetActorLocation());
@@ -446,6 +467,18 @@ void ARGBPlayerCharacter::SetSelectedWeaponColor(ERGBColor NewColor)
 	if (IsValid(CycleWeaponSound)) {
 		UGameplayStatics::PlaySoundAtLocation(this, CycleWeaponSound, GetActorLocation());
 	}
+}
+
+void ARGBPlayerCharacter::RestoreSelectedWeaponColor(ERGBColor NewColor)
+{
+	if (!IsWeaponColorUnlocked(NewColor))
+	{
+		return;
+	}
+
+	SelectedWeaponColor = NewColor;
+	ApplyWeaponColorMaterial();
+	OnWeaponColorChanged.Broadcast(SelectedWeaponColor);
 }
 
 void ARGBPlayerCharacter::ApplyWeaponColorMaterial()

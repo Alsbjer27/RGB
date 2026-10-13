@@ -28,6 +28,8 @@ enum class ERGBArenaCameraTrackingMode : uint8 {
 	FollowPlayerXZ
 };
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FRGBArenaCameraZoneStateSignature);
+
 UCLASS()
 class RGB_API ARGBArenaCameraZone : public AActor
 {
@@ -42,6 +44,13 @@ public:
 	ERGBArenaViewMode GetArenaViewMode() const { return ArenaViewMode; }
 
 	bool ContainWorldLocation(const FVector& WorldLocation) const;
+	FVector ClampWorldLocation(const FVector& WorldLocation, const FVector& WorldPadding = FVector::ZeroVector) const;
+
+	UPROPERTY(BlueprintAssignable, Category = "RGB|Camera")
+	FRGBArenaCameraZoneStateSignature OnPlayerEnteredZone;
+
+	UPROPERTY(BlueprintAssignable, Category = "RGB|Camera")
+	FRGBArenaCameraZoneStateSignature OnPlayerExitedZone;
 
 protected:
 	virtual void BeginPlay() override;

@@ -14,6 +14,7 @@ class ARGBArenaCameraZone;
 class UTextRenderComponent;
 class ARGBEnemyCharacter;
 class USoundBase;
+class URGBArenaEnemyCoordinatorComponent;
 
 USTRUCT()
 struct FRGBArenaEnemySpawnRecord {
@@ -71,6 +72,9 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RGB|Arena")
 	TObjectPtr<USceneComponent> SceneRoot;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RGB|Arena|Enemies")
+	TObjectPtr<URGBArenaEnemyCoordinatorComponent> EnemyCoordinator;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Arena")
 	ERGBColor RequiredColor = ERGBColor::Blue;
 
@@ -91,6 +95,12 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Arena|Audio")
 	TObjectPtr<USoundBase> ArenaCompletedSound;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Arena|Enemies")
+	bool bRespawnEliminatedEnemies = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Arena|Enemies", meta = (EditCondition = "bRespawnEliminatedEnemies", ClampMin = "0.0", Units = "s"))
+	float EnemyRespawnDelay = 5.0f;
 
 private:
 	UFUNCTION()
@@ -113,6 +123,7 @@ private:
 	bool bCompleted = false;
 
 	bool bResetInProgress = true;
+	bool bPlayerInsideArena = false;
 
 	FTimerHandle InitialEvaluationTimer;
 
@@ -127,6 +138,22 @@ private:
 	UPROPERTY(Transient)
 	TArray<FRGBArenaEnemySpawnRecord> EnemySpawnRecord;
 
+	TMap<ARGBEnemyCharacter*, int32> EnemySpawnRecordIndices;
+	TMap<int32, FTimerHandle> EnemyRespawnTimers;
+
 	bool bRespawningEnemies = false;
 	bool bEnemiesNeedRespawn = false;
+
+	UFUNCTION()
+	void HandlePlayerEnteredArenaZone();
+
+	UFUNCTION()
+	void HandlePlayerExitedArenaZone();
+
+	UFUNCTION()
+	void HandleEnemyEliminated(ARGBEnemyCharacter* EliminatedEnemy);
+
+	void TrackEnemySpawnRecord(ARGBEnemyCharacter* Enemy, int32 SpawnRecordIndex);
+	void RespawnEnemyFromRecord(int32 SpawnRecordIndex);
+	void ClearEnemyRespawnTimers();
 };

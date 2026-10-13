@@ -96,6 +96,49 @@ The observed .blend1 backup is not matched by *.blend. Decide whether to ignore
 backups or track them through LFS before committing that file. No commits or
 LFS configuration changes are part of this documentation task.
 
+## D011 - Reusable level transition areas
+
+Status: Accepted and implemented, 2026-10-12.
+
+Level-to-level traversal uses a reusable C++ overlap actor with an editor-assigned
+soft level reference. Entering its trigger locks local player input, fades the
+camera to black, optionally holds black, and opens the destination level once.
+The destination gameplay controller owns the existing initial black hold and
+fade-in, keeping level composition and timing configurable without Level Blueprint
+gameplay logic.
+
+## D012 - Arena-scoped enemy coordination and flying enemies
+
+Status: Accepted and implemented, 2026-10-13.
+
+Each arena owns a timer-driven enemy coordinator. The coordinator assigns one
+melee attacker by default, places remaining enemies in pressure slots, limits
+simultaneous attack permission, and owns shared target reservations. Enemy
+characters retain authoritative movement, attacks, health, color, and variant
+capabilities. Registration follows the arena's existing spawn, delayed respawn,
+reset, and completion lifecycle.
+
+Enemy behavior exposes a shared action-state enum for diagnostics. Attack damage
+uses explicit C++ windup and completion timers; animation montages are optional
+presentation. Teleporters share attack permission for AoE windups and use the
+arena coordinator for destination reservations when available.
+
+Flying enemies use CharacterMovement in flying mode, constrained to the X/Z
+gameplay plane. They always follow the player's live position while the
+coordinator controls attack permission. Enemy-separation and geometry-probe
+steering modify the pursuit direction locally. Their pawn collision overlaps
+other pawns to avoid physical pushing while swept movement continues to block
+level geometry. Arena registration explicitly supplies the arena camera zone;
+flying movement clamps the full capsule inside that zone. Flying attacks reuse
+the shared windup, cooldown, coordination, and player-health path with a
+sphere-to-player-capsule range check suitable for airborne contact. Arena-owned
+enemies remain in Idle until the player enters their camera zone and return to
+Idle when the player exits; movement, targeting, attacks, teleport charges, and
+AoE warnings pause while the arena is inactive.
+
+Platform traversal and sabotage remain deferred until authored reachability and
+the living-enemy platform interaction rule are agreed.
+
 ## Future decision entry format
 
 Use a stable D-number, title, date, status (Proposed/Accepted/Open/Superseded),

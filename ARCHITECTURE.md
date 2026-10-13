@@ -1,7 +1,7 @@
 # Planned C++ architecture
 
-Status: proposal for review. These classes do not exist yet. Introduce them
-incrementally in their milestone; keep a single RGB runtime module initially.
+Status: accepted reference plan, updated as systems are implemented. Introduce
+classes incrementally in their milestone; keep a single RGB runtime module.
 
 ## Ownership and classes
 
@@ -22,11 +22,14 @@ incrementally in their milestone; keep a single RGB runtime module initially.
 | 5 | ARGBArenaController | Own explicit platform registry, required configuration, completion state/event, and arena reset. Expose a read-only snapshot to AI. |
 | 5 | FRGBPlatformColorRequirement / FRGBArenaSnapshot | Store stable platform IDs and target/current colors. Support pure configuration matching and hypothetical-change evaluation. |
 | 6 | ARGBEnemyAIController | Own chase/sabotage decisions, target validity, traversal requests, and progress/failure handling. |
+| 6 | URGBArenaEnemyCoordinatorComponent | Assign stable melee/pressure/special roles within one arena, cap simultaneous attacks, and reserve shared tactical targets. |
+| 6 | ERGBEnemyActionState / FRGBEnemyCoordinationAssignment | Expose explicit action state and short-lived coordinator assignments for diagnostics and variant-independent behavior. |
 | 6 | URGBPlatformNavigationComponent | Represent reachable platform links and move/jump actions for the enemy's capabilities. Start with authored links; validate actions against real movement. |
 | 6 | FRGBEnemyDecisionContext / FRGBEnemyActionScore | Evaluate player pursuit and reachable sabotage candidates using enemy color, support platform, arena requirements, costs, and predicted result. |
 | 8 | ARGBCannon | Own countdown, firing state, line-of-fire query, and events. Route elimination through the existing combat/transfer path. |
 | 8 | Cannon-aware extensions to AI context/scoring | Predict whether arrival before firing and elimination-induced color transfer would worsen the target configuration; choose intentional exposure when feasible. |
 | 9 | URGBProgressionSubsystem / URGBSaveGame | Own cross-level progression and serialized progress if persistence is required. Define schema only once progression scope is agreed. |
+| 9 | ARGBFlyingEnemyCharacter | Pursue the player's live position in the X/Z plane with swept geometry collision, local separation steering, coordinator-owned attack permission, and a configurable spherical static-mesh body. |
 
 ## Movement and camera proposal
 
@@ -65,6 +68,11 @@ predicted reduction in correctly configured platforms caused by sabotage, minus
 travel cost/risk. Reuse the arena's hypothetical evaluation for both sabotage
 and later cannon sacrifices. Add cooldown/hysteresis to avoid constant target
 switching; reject unreachable targets and replan after movement failure.
+
+The first implemented coordination layer is arena-scoped and timer-driven. It
+assigns one melee attacker by default, keeps other enemies in pressure slots,
+and shares attack permission and destination reservations across variants.
+Authored platform traversal and sabotage scoring remain the next AI stage.
 
 For cannon tactics, query remaining countdown and shot geometry, estimate
 arrival time, and predict the platform/color resulting from elimination.
