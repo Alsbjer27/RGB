@@ -23,6 +23,7 @@
 #include "../Platforms/RGBColorPlatform.h"
 
 #include "../Player/RGBPlayerCharacter.h"
+#include "../Arena/RGBArenaControl.h"
 
 // Sets default values
 ARGBEnemyCharacter::ARGBEnemyCharacter()
@@ -71,7 +72,7 @@ void ARGBEnemyCharacter::Tick(float DeltaTime)
 
 	UCharacterMovementComponent* Movement = GetCharacterMovement();
 
-	if (!bArenaAIActive) {
+	if (!bArenaAIActive || bEliminated) {
 		ConsumeMovementInputVector();
 		Movement->StopMovementImmediately();
 		SetActionState(ERGBEnemyActionState::Idle);
@@ -117,7 +118,8 @@ void ARGBEnemyCharacter::Tick(float DeltaTime)
 		return;
 	}
 
-	if (ACharacter* Player = TargetPlayer.Get()) {
+	if (ACharacter* Player = TargetPlayer.Get(); Player && (!ArenaAttributes.bEnabled || !HasEnemyCoordinator())) {
+		UpdateGroundMovementSpeed(true);
 		SetActionState(ERGBEnemyActionState::Chase);
 		const float DifferenceX =
 			Player->GetActorLocation().X - GetActorLocation().X;
@@ -150,6 +152,15 @@ void ARGBEnemyCharacter::Tick(float DeltaTime)
 		return;
 	}
 	SetActionState(ERGBEnemyActionState::Patrol);
+	UpdateGroundMovementSpeed(false);
+	if (ArenaAttributes.bEnabled && GetWorld()->GetTimeSeconds() >= NextPatrolDirectionTime) {
+		NextPatrolDirectionTime = GetWorld()->GetTimeSeconds() + FMath::FRandRange(ArenaAttributes.MinimumPatrolDirectionTime, ArenaAttributes.MaximumPatrolDirectionTime);
+		const float DesiredDirection = FMath::RandBool() ? 1.0f : -1.0f;
+		if (DesiredDirection != PatrolDirection && CanWalkInDirection(DesiredDirection, DeltaTime)) {
+			StartTurn(DesiredDirection);
+			return;
+		}
+	}
 
 	if (!CanWalkInDirection(PatrolDirection, DeltaTime)) {
 		Movement->StopMovementImmediately();
@@ -190,16 +201,19 @@ bool ARGBEnemyCharacter::RecieveColorHit(ERGBColor ProjectileColor)
 	TransferColorSupportingPlatform();
 	OnEnemyEliminated.Broadcast(this);
 
-	Destroy();
+	if (!bArenaRespawnManaged) {
+		Destroy();
+	}
 	return true;
 }
 
 void ARGBEnemyCharacter::DespawnForArenaCompletion()
 {
-	if (bEliminated) {
+	if (IsActorBeingDestroyed()) {
 		return;
 	}
 
+	bArenaRespawnManaged = false;
 	bEliminated = true;
 	SetActionState(ERGBEnemyActionState::Disabled);
 	ReleaseCoordinatedAttackPermission();
@@ -216,6 +230,9 @@ void ARGBEnemyCharacter::BeginPlay()
 
 	CurrentHealth = FMath::Max(MaxHealth, 1);
 	bEliminated = false;
+	BaseGroundMovementSpeed = FMath::Max(GetCharacterMovement()->MaxWalkSpeed, 0.0f);
+	bHasCapturedGroundMovementSpeed = true;
+	HandleArenaMovementSpeedMultiplierChanged(ArenaMovementSpeedMultiplier);
 	SetActionState(bPatrolEnabled ? ERGBEnemyActionState::Patrol : ERGBEnemyActionState::Idle);
 
 	if (IsValid(ColorComponent)) {
@@ -288,6 +305,68 @@ void ARGBEnemyCharacter::SetArenaCameraZone(ARGBArenaCameraZone* NewArenaCameraZ
 	ArenaCameraZone = NewArenaCameraZone;
 }
 
+void ARGBEnemyCharacter::SetOwningArena(ARGBArenaControl* NewArena)
+{
+	if (OwningArena && NewArena && OwningArena != NewArena) {
+		UE_LOG(LogTemp, Warning, TEXT("%s already belongs to %s; rejected arena %s."), *GetName(), *GetNameSafe(OwningArena), *GetNameSafe(NewArena));
+		return;
+	}
+	OwningArena = NewArena;
+}
+
+void ARGBEnemyCharacter::ApplyArenaAttributes(const FRGBEnemyArenaAttributes& NewAttributes)
+{
+	const bool bChanged = !FMath::IsNearlyEqual(ArenaAttributes.Completion, NewAttributes.Completion) || ArenaAttributes.bEnabled != NewAttributes.bEnabled;
+	ArenaAttributes = NewAttributes;
+	if (bChanged) {
+		HandleArenaAttributesChanged();
+	}
+}
+
+void ARGBEnemyCharacter::HandleArenaAttributesChanged()
+{
+	HandleArenaMovementSpeedMultiplierChanged(ArenaMovementSpeedMultiplier);
+}
+
+bool ARGBEnemyCharacter::CanStartAttackNow() const
+{
+	return IsAvailableForArenaAI() && !bAttacking && !bTurning && GetWorld() && GetWorld()->GetTimeSeconds() >= NextAttackAllowedTime;
+}
+
+bool ARGBEnemyCharacter::IsPlayerVisibleForChase(const ACharacter* Player) const
+{
+	if (!IsValid(Player) || !IsValid(Player->GetCapsuleComponent())) {
+		return false;
+	}
+	const float Range = ArenaAttributes.bEnabled ? ArenaAttributes.DetectionRange : FMath::Max(DetectionRange, LoseInterestRange);
+	FVector Difference = Player->GetActorLocation() - GetActorLocation();
+	Difference.Y = 0.0f;
+	const float EnemyFeet = GetActorLocation().Z - GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	const float PlayerFeet = Player->GetActorLocation().Z - Player->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	if (Difference.SizeSquared() > FMath::Square(FMath::Max(0.0f, Range)) || FMath::Abs(EnemyFeet - PlayerFeet) > FMath::Max(0.0f, DetectionHeightTolerance)) {
+		return false;
+	}
+	FCollisionQueryParams Params;
+	Params.AddIgnoredActor(this);
+	Params.AddIgnoredActor(Player);
+	FHitResult Hit;
+	return !GetWorld()->LineTraceSingleByChannel(Hit, GetActorLocation(), Player->GetActorLocation(), ECC_Visibility, Params);
+}
+
+bool ARGBEnemyCharacter::CanBeAttackCandidate(const ACharacter* Player) const
+{
+	if (!IsAvailableForArenaAI() || !IsPlayerVisibleForChase(Player) || !GetCharacterMovement()->IsMovingOnGround()) {
+		return false;
+	}
+	const float Direction = Player->GetActorLocation().X >= GetActorLocation().X ? 1.0f : -1.0f;
+	return IsPlayerWithinAttackRange(Player) || CanWalkInDirection(Direction, 0.0f);
+}
+
+bool ARGBEnemyCharacter::IsReadyToAttack(const ACharacter* Player) const
+{
+	return CanStartAttackNow() && IsPlayerWithinAttackRange(Player);
+}
+
 void ARGBEnemyCharacter::SetArenaAIActive(bool bNewActive)
 {
 	if (bArenaAIActive == bNewActive) {
@@ -320,8 +399,102 @@ void ARGBEnemyCharacter::SetArenaAIActive(bool bNewActive)
 	HandleArenaAIActiveChanged(bArenaAIActive);
 }
 
+void ARGBEnemyCharacter::SetArenaRespawnManaged(bool bManaged)
+{
+	bArenaRespawnManaged = bManaged;
+}
+
+void ARGBEnemyCharacter::PrepareForArenaRespawn()
+{
+	const bool bWasArenaAIActive = bArenaAIActive;
+	SetArenaAIActive(false);
+
+	if (!bWasArenaAIActive) {
+		HandleArenaAIActiveChanged(false);
+	}
+
+	GetWorldTimerManager().ClearTimer(AttackDamageTimer);
+	GetWorldTimerManager().ClearTimer(AttackFinishTimer);
+	bAttacking = false;
+	bTurning = false;
+	TargetPlayer.Reset();
+	ReleaseCoordinatedAttackPermission();
+	ConsumeMovementInputVector();
+
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement()) {
+		Movement->StopMovementImmediately();
+	}
+
+	if (UAnimInstance* Animation = GetMesh()->GetAnimInstance()) {
+		Animation->StopAllMontages(0.0f);
+	}
+
+	SetActionState(ERGBEnemyActionState::Disabled);
+	SetActorHiddenInGame(true);
+	SetActorEnableCollision(false);
+	SetActorTickEnabled(false);
+}
+
+void ARGBEnemyCharacter::RestoreForArenaRespawn(const FTransform& SpawnTransform)
+{
+	SetActorTransform(SpawnTransform, false, nullptr, ETeleportType::TeleportPhysics);
+	SetActorHiddenInGame(false);
+	SetActorEnableCollision(true);
+	SetActorTickEnabled(true);
+
+	CurrentHealth = FMath::Max(MaxHealth, 1);
+	bEliminated = false;
+	bAttacking = false;
+	bTurning = false;
+	NextAttackAllowedTime = 0.0;
+	NextPatrolDirectionTime = 0.0;
+	TargetPlayer.Reset();
+
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement()) {
+		Movement->StopMovementImmediately();
+	}
+
+	if (IsValid(ColorComponent)) {
+		ColorComponent->ResetColor();
+		ApplyColorMaterial(ColorComponent->GetCurrentColor());
+	}
+
+	SetActionState(bPatrolEnabled ? ERGBEnemyActionState::Patrol : ERGBEnemyActionState::Idle);
+	HandleArenaMovementSpeedMultiplierChanged(ArenaMovementSpeedMultiplier);
+}
+
+void ARGBEnemyCharacter::SetArenaMovementSpeedMultiplier(float NewMultiplier)
+{
+	const float SafeMultiplier = FMath::Max(NewMultiplier, 0.0f);
+
+	if (FMath::IsNearlyEqual(ArenaMovementSpeedMultiplier, SafeMultiplier)) {
+		return;
+	}
+
+	ArenaMovementSpeedMultiplier = SafeMultiplier;
+	HandleArenaMovementSpeedMultiplierChanged(ArenaMovementSpeedMultiplier);
+}
+
 void ARGBEnemyCharacter::HandleArenaAIActiveChanged(bool bNewActive)
 {
+}
+
+void ARGBEnemyCharacter::HandleArenaMovementSpeedMultiplierChanged(float NewMultiplier)
+{
+	if (!bHasCapturedGroundMovementSpeed) {
+		return;
+	}
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement()) {
+		Movement->MaxWalkSpeed = BaseGroundMovementSpeed * FMath::Max(NewMultiplier, 0.0f);
+	}
+}
+
+void ARGBEnemyCharacter::UpdateGroundMovementSpeed(bool bChasing)
+{
+	if (ArenaAttributes.bEnabled) {
+		const float Multiplier = bChasing ? ArenaAttributes.ChaseSpeedMultiplier : ArenaAttributes.MovementSpeedMultiplier;
+		GetCharacterMovement()->MaxWalkSpeed = BaseGroundMovementSpeed * FMath::Max(0.0f, Multiplier);
+	}
 }
 
 bool ARGBEnemyCharacter::GetCoordinationAssignment(FRGBEnemyCoordinationAssignment& OutAssignment) const
@@ -369,6 +542,17 @@ bool ARGBEnemyCharacter::UpdateCoordinatedMovement(float DeltaTime)
 
 	if (!GetCoordinationAssignment(Assignment) || !Assignment.bHasTargetLocation) {
 		return false;
+	}
+	if (ArenaAttributes.bEnabled && !IsPlayerVisibleForChase(UGameplayStatics::GetPlayerCharacter(this, 0))) {
+		return false;
+	}
+	UpdateGroundMovementSpeed(true);
+	ACharacter* Player = UGameplayStatics::GetPlayerCharacter(this, 0);
+	if (Assignment.bCanAttack && IsReadyToAttack(Player)) {
+		StartAttackAgainst(Player);
+		if (bAttacking) {
+			return true;
+		}
 	}
 
 	UCharacterMovementComponent* Movement = GetCharacterMovement();
@@ -450,6 +634,10 @@ void ARGBEnemyCharacter::UpdatePlayerDetection()
 
 	if (!bArenaAIActive || !bPatrolEnabled || !IsValid(Player) || Player == this) {
 		TargetPlayer.Reset();
+		return;
+	}
+	if (ArenaAttributes.bEnabled) {
+		TargetPlayer = IsPlayerVisibleForChase(Player) ? Player : nullptr;
 		return;
 	}
 
@@ -549,7 +737,7 @@ void ARGBEnemyCharacter::UpdateTurn(float DeltaTime)
 
 void ARGBEnemyCharacter::StartAttack()
 {
-	if (bAttacking || bTurning || GetWorld()->GetTimeSeconds() < NextAttackAllowedTime) {
+	if (!CanStartAttackNow()) {
 		return;
 	}
 
@@ -568,7 +756,8 @@ void ARGBEnemyCharacter::StartAttack()
 	}
 
 	bAttacking = true;
-	SetActionState(ERGBEnemyActionState::AttackWindup);
+	SetActionState(ERGBEnemyActionState::Attacking);
+	CurrentAttackCooldown = FMath::Max(AttackCooldown, 0.0f) * (ArenaAttributes.bEnabled ? ArenaAttributes.AttackCooldownMultiplier : 1.0f);
 
 	GetWorldTimerManager().ClearTimer(AttackDamageTimer);
 	GetWorldTimerManager().ClearTimer(AttackFinishTimer);
@@ -589,13 +778,16 @@ void ARGBEnemyCharacter::StartAttack()
 void ARGBEnemyCharacter::FinishAttack()
 {
 	bAttacking = false;
-	NextAttackAllowedTime = GetWorld()->GetTimeSeconds() + FMath::Max(AttackCooldown, 0.0f);
+	NextAttackAllowedTime = GetWorld()->GetTimeSeconds() + CurrentAttackCooldown;
 	SetActionState(ERGBEnemyActionState::AttackCooldown);
 	ReleaseCoordinatedAttackPermission();
 }
 
 void ARGBEnemyCharacter::TryApplyAttackDamage()
 {
+	if (!bAttacking || !IsAvailableForArenaAI()) {
+		return;
+	}
 	ARGBPlayerCharacter* Player =
 		Cast<ARGBPlayerCharacter>(TargetPlayer.Get());
 
@@ -603,7 +795,7 @@ void ARGBEnemyCharacter::TryApplyAttackDamage()
 		return;
 	}
 
-	Player->RecieveDamage(AttackDamage);
+	Player->RecieveDamageFromSource(AttackDamage, this);
 }
 
 void ARGBEnemyCharacter::ApplyColorMaterial(ERGBColor Color)

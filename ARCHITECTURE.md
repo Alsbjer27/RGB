@@ -74,6 +74,26 @@ assigns one melee attacker by default, keeps other enemies in pressure slots,
 and shares attack permission and destination reservations across variants.
 Authored platform traversal and sabotage scoring remain the next AI stage.
 
+Arena Control optionally evaluates per-variant enemy pressure profiles from its
+authoritative completion fraction. Each profile value supplies endpoints and
+an optional normalized response curve. Profiles cover ground patrol/chase and
+cooldown, teleporter idle/danger/range, flying speed/acceleration/avoidance, and
+the shared attacker budget. The coordinator filters eligible threats across
+all variants and keeps executing attacks stable when that budget decreases.
+Ground attack animations start immediately; the authored hit delay determines
+the damage moment during animation and is never scaled by arena progress.
+
+Enabled arena profiles use an explicit per-arena Target Point registry. Enemy
+ownership is exclusive to one Arena Control. Reset, delayed respawn and reset
+after completion reuse inactive configured actors to retain instance tuning.
+Legacy profiles remain available until a placed arena opts into the new system.
+
+Teleporter attack selection first gates on similar capsule-feet heights, then
+uses horizontal range and horizontal coordinator distance ranking. Actual damage
+revalidates that eligibility and stays bounded by the authored X/Z AoE radius.
+Damage-source diagnostics retain attacker identity and can show optional world
+markers to identify otherwise hard-to-see attacks.
+
 For cannon tactics, query remaining countdown and shot geometry, estimate
 arrival time, and predict the platform/color resulting from elimination.
 Choose exposure only when feasible and damaging to player progress; otherwise
@@ -92,3 +112,17 @@ Use focused C++ tests for color rules, hit matching, configuration evaluation,
 and AI scoring when introduced. Use L_MechanicsTest for real collision, movement,
 camera, transfer traces, traversal, reset, and integrated event behavior. Avoid
 hard-coded asset paths and global actor searches in per-frame code.
+
+## HUD arena progress
+
+`URGBHUDWidget` presents completion from the arena whose camera bounds contain
+the owning player's current pawn. It caches arena controls once on construction
+and registers newly spawned controls, rather than searching the world each frame.
+Its visual tick reads completion from that cached arena and smooths the liquid
+material's `FillAmount`. Changing rooms snaps to the new room's stored progress;
+outside arena camera bounds the display is immediately zero. Pawn replacement
+and arena reset are read from current state, so no old pawn or first-room binding
+survives. The existing HUD Blueprint supplies layout, images and health visuals;
+it no longer selects the first arena or maintains a separate arena progress value.
+A replacement HUD retires previous viewport HUDs owned by the same local player,
+preventing stacked displays after the character's respawn creates a new widget.

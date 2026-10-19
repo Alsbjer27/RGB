@@ -56,6 +56,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "RGB|Health")
 	bool RecieveDamage(int32 DamageAmount);
 
+	/** C++ damage entry point that retains the attacker for diagnostics. */
+	bool RecieveDamageFromSource(int32 DamageAmount, AActor* DamageSource);
+
 	UFUNCTION(BlueprintPure, Category = "RGB|Health")
 	int32 GetCurrentHealth() const { return CurrentHealth; }
 
@@ -69,6 +72,12 @@ public:
 	void StopScriptedJump();
 
 protected:
+	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category = "RGB|Health|Debug")
+	TWeakObjectPtr<AActor> LastDamageSource;
+
+	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category = "RGB|Health|Debug")
+	int32 LastDamageAmount = 0;
+
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 

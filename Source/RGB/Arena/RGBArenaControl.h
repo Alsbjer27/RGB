@@ -6,6 +6,7 @@
 #include "GameFramework/Actor.h"
 #include "../Platforms/RGBColorComponent.h"
 #include "TimerManager.h"
+#include "../AI/RGBArenaEnemyTuning.h"
 #include "RGBArenaControl.generated.h"
 
 class ARGBColorPlatform;
@@ -15,6 +16,7 @@ class UTextRenderComponent;
 class ARGBEnemyCharacter;
 class USoundBase;
 class URGBArenaEnemyCoordinatorComponent;
+class ATargetPoint;
 
 USTRUCT()
 struct FRGBArenaEnemySpawnRecord {
@@ -39,11 +41,14 @@ class RGB_API ARGBArenaControl : public AActor
 	GENERATED_BODY()
 	
 public:	
+    ARGBArenaCameraZone* GetArenaCameraZone() const { return ArenaCameraZone; }
 	// Sets default values for this actor's properties
 	ARGBArenaControl();
 
 	void BeginArenaReset();
 	void FinishArenaReset();
+	bool UsesArenaEnemyTuning() const { return bUseArenaEnemyTuning; }
+	const TArray<TObjectPtr<ATargetPoint>>& GetTeleportTargetPoints() const { return TeleportTargetPoints; }
 
 	UFUNCTION(BlueprintPure, Category = "RGB|Arena")
 	bool IsCompleted() const { return bCompleted; }
@@ -99,10 +104,52 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Arena|Enemies")
 	bool bRespawnEliminatedEnemies = true;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Arena|Enemies", meta = (EditCondition = "bRespawnEliminatedEnemies", ClampMin = "0.0", Units = "s"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Arena|Enemies", meta = (EditCondition = "bRespawnEliminatedEnemies"))
+	bool bScaleEnemyRespawnDelayWithArenaProgress = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Arena|Enemies", meta = (EditCondition = "bRespawnEliminatedEnemies && !bScaleEnemyRespawnDelayWithArenaProgress", EditConditionHides, ClampMin = "0.0", Units = "s"))
 	float EnemyRespawnDelay = 5.0f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Arena|Enemies", meta = (EditCondition = "bRespawnEliminatedEnemies && bScaleEnemyRespawnDelayWithArenaProgress", EditConditionHides, ClampMin = "0.0", Units = "s"))
+	float EnemyRespawnDelayAtNoProgress = 8.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Arena|Enemies", meta = (EditCondition = "bRespawnEliminatedEnemies && bScaleEnemyRespawnDelayWithArenaProgress", EditConditionHides, ClampMin = "0.0", Units = "s"))
+	float EnemyRespawnDelayNearCompletion = 2.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Arena|Enemies")
+	bool bScaleEnemyMovementSpeedWithArenaProgress = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Arena|Enemies", meta = (EditCondition = "bScaleEnemyMovementSpeedWithArenaProgress", EditConditionHides, ClampMin = "0.0"))
+	float EnemyMovementSpeedMultiplierAtNoProgress = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Arena|Enemies", meta = (EditCondition = "bScaleEnemyMovementSpeedWithArenaProgress", EditConditionHides, ClampMin = "0.0"))
+	float EnemyMovementSpeedMultiplierNearCompletion = 1.5f;
+
+	/** Enable the per-variant profiles below. These replace the older shared speed multiplier. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Arena|AI")
+	bool bUseArenaEnemyTuning = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Arena|AI", meta = (EditCondition = "bUseArenaEnemyTuning"))
+	FRGBArenaCoordinationTuning CoordinationTuning;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Arena|AI", meta = (EditCondition = "bUseArenaEnemyTuning"))
+	FRGBArenaGroundTuning GroundEnemyTuning;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Arena|AI", meta = (EditCondition = "bUseArenaEnemyTuning"))
+	FRGBArenaTeleporterTuning TeleporterEnemyTuning;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Arena|AI", meta = (EditCondition = "bUseArenaEnemyTuning"))
+	FRGBArenaFlyingTuning FlyingEnemyTuning;
+
+	/** Arena-owned points replace tag discovery when arena AI tuning is enabled. */
+	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "RGB|Arena|AI")
+	TArray<TObjectPtr<ATargetPoint>> TeleportTargetPoints;
+
+	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category = "RGB|Arena|AI|Debug")
+	int32 CurrentMaximumAttackers = 1;
+
 private:
+	friend class FRGBArenaLifecycleTest;
 	UFUNCTION()
 	void HandlePlatformColorChanged(ERGBColor PreviousColor, ERGBColor NewColor);
 
@@ -141,6 +188,9 @@ private:
 	TMap<ARGBEnemyCharacter*, int32> EnemySpawnRecordIndices;
 	TMap<int32, FTimerHandle> EnemyRespawnTimers;
 
+	UPROPERTY(Transient)
+	TMap<int32, TObjectPtr<ARGBEnemyCharacter>> PendingRespawnEnemies;
+
 	bool bRespawningEnemies = false;
 	bool bEnemiesNeedRespawn = false;
 
@@ -154,6 +204,10 @@ private:
 	void HandleEnemyEliminated(ARGBEnemyCharacter* EliminatedEnemy);
 
 	void TrackEnemySpawnRecord(ARGBEnemyCharacter* Enemy, int32 SpawnRecordIndex);
+	float CalculateEnemyRespawnDelay() const;
+	float CalculateEnemyMovementSpeedMultiplier() const;
+	void ApplyEnemyMovementSpeedMultiplier();
+	FRGBEnemyArenaAttributes CalculateEnemyAttributes(const ARGBEnemyCharacter* Enemy) const;
 	void RespawnEnemyFromRecord(int32 SpawnRecordIndex);
 	void ClearEnemyRespawnTimers();
 };

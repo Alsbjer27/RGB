@@ -28,6 +28,13 @@
 #include "Kismet/GameplayStatics.h"
 
 #include "RGBDashAfterimageComponent.h"
+#include "DrawDebugHelpers.h"
+#include "Engine/Engine.h"
+#include "HAL/IConsoleManager.h"
+
+DEFINE_LOG_CATEGORY_STATIC(LogRGBPlayerDamage, Log, All);
+
+static TAutoConsoleVariable<int32> CVarRGBDebugPlayerDamage(TEXT("rgb.DebugPlayerDamage"), 0, TEXT("Show attacker names and world markers for player damage. 0: log only, 1: on-screen message and attacker marker."));
 
 // Sets default values
 ARGBPlayerCharacter::ARGBPlayerCharacter(const FObjectInitializer& ObjectInitializer) 
@@ -97,6 +104,11 @@ void ARGBPlayerCharacter::FellOutOfWorld(const UDamageType& DamageType)
 
 bool ARGBPlayerCharacter::RecieveDamage(int32 DamageAmount)
 {
+	return RecieveDamageFromSource(DamageAmount, nullptr);
+}
+
+bool ARGBPlayerCharacter::RecieveDamageFromSource(int32 DamageAmount, AActor* DamageSource)
+{
 	if (DamageAmount <= 0 || CurrentHealth <= 0) {
 		return false;
 	}
@@ -107,6 +119,19 @@ bool ARGBPlayerCharacter::RecieveDamage(int32 DamageAmount)
 
 	if (CurrentHealth == PreviousHealth) {
 		return false;
+	}
+
+	LastDamageSource = DamageSource;
+	LastDamageAmount = PreviousHealth - CurrentHealth;
+	const FString SourceName = IsValid(DamageSource) ? DamageSource->GetActorNameOrLabel() : TEXT("Unattributed damage (for example a Blueprint call)");
+	const FVector SourceLocation = IsValid(DamageSource) ? DamageSource->GetActorLocation() : GetActorLocation();
+	UE_LOG(LogRGBPlayerDamage, Log, TEXT("%s took %d damage from %s [%s]. Health %d -> %d. Source=%s Player=%s DeltaX=%.1f DeltaZ=%.1f"), *GetName(), LastDamageAmount, *SourceName, *GetNameSafe(IsValid(DamageSource) ? DamageSource->GetClass() : nullptr), PreviousHealth, CurrentHealth, *SourceLocation.ToCompactString(), *GetActorLocation().ToCompactString(), FMath::Abs(SourceLocation.X - GetActorLocation().X), FMath::Abs(SourceLocation.Z - GetActorLocation().Z));
+	if (CVarRGBDebugPlayerDamage.GetValueOnGameThread() != 0) {
+		if (GEngine) {
+			GEngine->AddOnScreenDebugMessage(INDEX_NONE, 6.0f, FColor::Red, FString::Printf(TEXT("Damage from %s: %d HP (health %d). Height difference %.0f cm"), *SourceName, LastDamageAmount, CurrentHealth, FMath::Abs(SourceLocation.Z - GetActorLocation().Z)));
+		}
+		DrawDebugLine(GetWorld(), GetActorLocation(), SourceLocation, FColor::Red, false, 6.0f, 0, 4.0f);
+		DrawDebugSphere(GetWorld(), SourceLocation, 100.0f, 16, FColor::Red, false, 6.0f, 0, 3.0f);
 	}
 
 	OnHealthChanged.Broadcast(CurrentHealth, FMath::Max(MaxHealth, 1));

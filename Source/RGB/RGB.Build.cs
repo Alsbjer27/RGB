@@ -13,7 +13,12 @@ public class RGB : ModuleRules
             "Engine",
             "InputCore",
             "EnhancedInput",
-            "Niagara"
+            "Niagara",
+            "UMG"
         });
+        if (Target.bBuildEditor)
+        {
+            PrivateDependencyModuleNames.AddRange(new string[] { "UnrealEd", "BlueprintGraph", "Kismet", "KismetCompiler" });
+        }
     }
 }

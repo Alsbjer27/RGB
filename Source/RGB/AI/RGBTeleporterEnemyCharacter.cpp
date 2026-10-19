@@ -20,6 +20,8 @@
 #include "NiagaraFunctionLibrary.h"
 
 #include "EngineUtils.h"
+#include "../Arena/RGBArenaControl.h"
+#include "../Camera/RGBArenaCameraZone.h"
 
 ARGBTeleporterEnemyCharacter::ARGBTeleporterEnemyCharacter()
 {
@@ -94,9 +96,18 @@ void ARGBTeleporterEnemyCharacter::EndPlay(const EEndPlayReason::Type EndPlayRea
 void ARGBTeleporterEnemyCharacter::FindTeleportPoints()
 {
 	TeleportPoints.Reset();
-	LastTeleportPoint.Reset();
-
 	TArray<AActor*> FoundActors;
+	if (GetArenaAttributes().bEnabled && GetOwningArena()) {
+		for (ATargetPoint* Point : GetOwningArena()->GetTeleportTargetPoints()) {
+			if (IsValid(Point) && IsPointInsideOwningArena(Point)) {
+				TeleportPoints.AddUnique(Point);
+			}
+		}
+		if (TeleportPoints.IsEmpty()) {
+			UE_LOG(LogTemp, Warning, TEXT("%s has no valid Teleport Target Points in arena %s. Assign points on the Arena Control."), *GetName(), *GetNameSafe(GetOwningArena()));
+		}
+		return;
+	}
 
 	UGameplayStatics::GetAllActorsOfClassWithTag(this, ATargetPoint::StaticClass(), TeleportPointTag, FoundActors);
 
@@ -140,7 +151,7 @@ void ARGBTeleporterEnemyCharacter::TryTeleport()
 		return;
 	}
 
-	bool bPlayerNearTeleportPoint = false;
+	bool bPlayerNearTeleportPoint = GetArenaAttributes().bEnabled;
 	const float SafeDetectionRange = FMath::Max(DetectionRange, 0.0f);
 
 	for (const TWeakObjectPtr<ATargetPoint>& PointPointer : TeleportPoints)
@@ -175,7 +186,7 @@ void ARGBTeleporterEnemyCharacter::TryTeleport()
 	{
 		ATargetPoint* Point = PointPointer.Get();
 
-		if (!IsValid(Point) || Point == LastTeleportPoint.Get())
+		if (!IsValid(Point) || Point == LastTeleportPoint.Get() || !IsPointInsideOwningArena(Point))
 		{
 			continue;
 		}
@@ -215,7 +226,8 @@ void ARGBTeleporterEnemyCharacter::TryTeleport()
 		return;
 	}
 
-	const float SafePlayerProximityWeight = FMath::Clamp(PlayerProximityWeight, 0.0f, 1.0f);
+	const FRGBEnemyArenaAttributes& Attributes = GetArenaAttributes();
+	const float SafePlayerProximityWeight = FMath::Clamp(Attributes.bEnabled ? Attributes.TeleportProximityWeight : PlayerProximityWeight, 0.0f, 1.0f);
 	const float MinimumCandidateDistance = FMath::Min(CandidateDistancesToPlayer);
 	const float MaximumCandidateDistance = FMath::Max(CandidateDistancesToPlayer);
 
@@ -226,7 +238,7 @@ void ARGBTeleporterEnemyCharacter::TryTeleport()
 	{
 		const float DistanceRange = MaximumCandidateDistance - MinimumCandidateDistance;
 		const float NormalizedDistance = DistanceRange > SMALL_NUMBER ? (CandidateDistancesToPlayer[Index] - MinimumCandidateDistance) / DistanceRange : 0.0f;
-		const float PlayerClosenessScore = 1.0f - NormalizedDistance;
+		const float PlayerClosenessScore = Attributes.bEnabled ? RGBEnemyTuning::ScoreTeleportDanger(CandidateDistancesToPlayer[Index], MinimumCandidateDistance, MaximumCandidateDistance, Attributes.TeleportDangerRadius) : 1.0f - NormalizedDistance;
 		const float RandomScore = FMath::FRand();
 		const float FinalScore = FMath::Lerp(RandomScore, PlayerClosenessScore, SafePlayerProximityWeight);
 
@@ -291,7 +303,7 @@ void ARGBTeleporterEnemyCharacter::CompleteTeleport()
 {
 	ATargetPoint* DestinationPoint = PendingTeleportPoint.Get();
 
-	if (!IsValid(DestinationPoint) || IsTeleportPointReservedByOther(DestinationPoint))
+	if (!IsValid(DestinationPoint) || !IsPointInsideOwningArena(DestinationPoint) || IsTeleportPointReservedByOther(DestinationPoint))
 	{
 		if (IsValid(TeleportChargeEffect))
 		{
@@ -366,7 +378,7 @@ void ARGBTeleporterEnemyCharacter::TryStartAoEAttack()
 
 	ACharacter* Player = UGameplayStatics::GetPlayerCharacter(this, 0);
 
-	if (!IsPlayerWithinAoERadius(Player)) {
+	if (!IsPlayerEligibleForAoEAttack(Player)) {
 		return;
 	}
 
@@ -375,6 +387,7 @@ void ARGBTeleporterEnemyCharacter::TryStartAoEAttack()
 	}
 
 	bAoEWindInProgress = true;
+	PendingAoECooldown = FMath::Max(0.0f, AoECooldown) * (GetArenaAttributes().bEnabled ? GetArenaAttributes().AttackCooldownMultiplier : 1.0f);
 	SetActionState(ERGBEnemyActionState::AoEWindup);
 	SetAoEWarningActive(true);
 
@@ -395,6 +408,8 @@ void ARGBTeleporterEnemyCharacter::HandleArenaAIActiveChanged(bool bNewActive)
 	GetWorldTimerManager().ClearTimer(TeleportTransistionTimer);
 	bAoEWindInProgress = false;
 	bTeleportInProgress = false;
+	NextAoEAttackAllowedTime = 0.0;
+	LastTeleportPoint.Reset();
 	TeleportChargeElapsed = 0.0f;
 	SetAoEWarningActive(false);
 	ReleaseCoordinationTarget(PendingTeleportPoint.Get());
@@ -413,8 +428,41 @@ void ARGBTeleporterEnemyCharacter::HandleArenaAIActiveChanged(bool bNewActive)
 	}
 }
 
+void ARGBTeleporterEnemyCharacter::HandleArenaMovementSpeedMultiplierChanged(float NewMultiplier)
+{
+	Super::HandleArenaMovementSpeedMultiplierChanged(NewMultiplier);
+
+	if (IsArenaAIActive() && GetWorldTimerManager().IsTimerActive(TeleportTimer)) {
+		ScheduleNextTeleport();
+	}
+}
+
+void ARGBTeleporterEnemyCharacter::HandleArenaAttributesChanged()
+{
+	Super::HandleArenaAttributesChanged();
+	if (HasActorBegunPlay()) {
+		FindTeleportPoints();
+		if (IsArenaAIActive() && !bTeleportInProgress && !bAoEWindInProgress && !TeleportPoints.IsEmpty()) {
+			ScheduleNextTeleport();
+		}
+	}
+}
+
+bool ARGBTeleporterEnemyCharacter::CanBeAttackCandidate(const ACharacter* Player) const
+{
+	return IsAvailableForArenaAI() && !bTeleportInProgress && IsPlayerEligibleForAoEAttack(Player);
+}
+
+bool ARGBTeleporterEnemyCharacter::IsReadyToAttack(const ACharacter* Player) const
+{
+	return CanBeAttackCandidate(Player) && !bAoEWindInProgress && GetWorld()->GetTimeSeconds() >= NextAoEAttackAllowedTime;
+}
+
 void ARGBTeleporterEnemyCharacter::ResolveAoEAttack()
 {
+	if (!bAoEWindInProgress) {
+		return;
+	}
 	bAoEWindInProgress = false;
 	SetAoEWarningActive(false);
 	ReleaseCoordinatedAttackPermission();
@@ -422,23 +470,39 @@ void ARGBTeleporterEnemyCharacter::ResolveAoEAttack()
 
 	ARGBPlayerCharacter* Player = Cast<ARGBPlayerCharacter>(UGameplayStatics::GetPlayerCharacter(this, 0));
 
-	if (IsValid(Player) && AoEDamage > 0 && IsPlayerWithinAoERadius(Player)) {
-		Player->RecieveDamage(AoEDamage);
+	if (IsAvailableForArenaAI() && IsValid(Player) && AoEDamage > 0 && IsPlayerEligibleForAoEAttack(Player) && IsPlayerWithinAoERadius(Player)) {
+		Player->RecieveDamageFromSource(AoEDamage, this);
 	}
 
-	NextAoEAttackAllowedTime = GetWorld()->GetTimeSeconds() + FMath::Max(AoECooldown, 0.0f);
+	NextAoEAttackAllowedTime = GetWorld()->GetTimeSeconds() + PendingAoECooldown;
 }
 
 bool ARGBTeleporterEnemyCharacter::IsPlayerWithinAoERadius(const ACharacter* Player) const
 {
-	if (!IsValid(Player) || AoERadius <= 0.0f) {
+	if (!IsValid(Player)) {
 		return false;
 	}
 
+	if (AoERadius <= 0.0f) { return false; }
 	FVector Difference = Player->GetActorLocation() - GetActorLocation();
 	Difference.Y = 0.0f;
 
 	return Difference.SizeSquared() <= FMath::Square(AoERadius);
+}
+
+bool ARGBTeleporterEnemyCharacter::IsPlayerEligibleForAoEAttack(const ACharacter* Player) const
+{
+	if (!IsValid(Player) || AoEDamage <= 0 || AoERadius <= 0.0f) {
+		return false;
+	}
+	const FRGBEnemyArenaAttributes& Attributes = GetArenaAttributes();
+	if (!Attributes.bEnabled) {
+		return IsPlayerWithinAoERadius(Player);
+	}
+	if (!IsValid(Player->GetCapsuleComponent())) { return false; }
+	const float EnemyFeetZ = GetActorLocation().Z - GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	const float PlayerFeetZ = Player->GetActorLocation().Z - Player->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	return RGBEnemyTuning::IsSameCombatLevel(EnemyFeetZ, PlayerFeetZ, Attributes.TeleportSameLevelHeightTolerance) && RGBEnemyTuning::IsWithinHorizontalAttackRange(GetActorLocation(), Player->GetActorLocation(), Attributes.TeleportHorizontalAttackRange);
 }
 
 void ARGBTeleporterEnemyCharacter::SetAoEWarningActive(bool bActive)
@@ -462,6 +526,12 @@ bool ARGBTeleporterEnemyCharacter::IsTeleportDestinationClear(const FVector& Des
 	if (!IsValid(World)) {
 		return false;
 	}
+	if (GetArenaAttributes().bEnabled && IsValid(GetArenaCameraZone())) {
+		const FVector Padding(GetCapsuleComponent()->GetScaledCapsuleRadius(), GetCapsuleComponent()->GetScaledCapsuleRadius(), GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
+		if (!GetArenaCameraZone()->ClampWorldLocation(Destination, Padding).Equals(Destination, 1.0f)) {
+			return false;
+		}
+	}
 
 	const float Padding = FMath::Max(TeleportOccupancyPadding, 0.0f);
 	const float Radius = GetCapsuleComponent()->GetScaledCapsuleRadius() + Padding;
@@ -477,11 +547,18 @@ bool ARGBTeleporterEnemyCharacter::IsTeleportDestinationClear(const FVector& Des
 
 void ARGBTeleporterEnemyCharacter::ScheduleNextTeleport()
 {
-	const float SafeMinimumIdleTime = FMath::Max(MinimumTeleportIdleTime, 0.1f);
-	const float SafeMaximumIdleTime = FMath::Max(MaximumTeleportIdleTime, SafeMinimumIdleTime);
-	const float NextTeleportDelay = FMath::FRandRange(SafeMinimumIdleTime, SafeMaximumIdleTime);
+	const FRGBEnemyArenaAttributes& Attributes = GetArenaAttributes();
+	const float SafeMinimumIdleTime = FMath::Max(Attributes.bEnabled ? Attributes.MinimumTeleportIdleTime : MinimumTeleportIdleTime, 0.1f);
+	const float SafeMaximumIdleTime = FMath::Max(Attributes.bEnabled ? Attributes.MaximumTeleportIdleTime : MaximumTeleportIdleTime, SafeMinimumIdleTime);
+	const float SpeedMultiplier = Attributes.bEnabled ? 1.0f : FMath::Max(GetArenaMovementSpeedMultiplier(), 0.01f);
+	const float NextTeleportDelay = FMath::FRandRange(SafeMinimumIdleTime, SafeMaximumIdleTime) / SpeedMultiplier;
 
 	GetWorldTimerManager().SetTimer(TeleportTimer, this, &ARGBTeleporterEnemyCharacter::TryTeleport, NextTeleportDelay, false);
+}
+
+bool ARGBTeleporterEnemyCharacter::IsPointInsideOwningArena(const ATargetPoint* Point) const
+{
+	return IsValid(Point) && (!GetArenaAttributes().bEnabled || (IsValid(GetArenaCameraZone()) && GetArenaCameraZone()->ContainWorldLocation(Point->GetActorLocation())));
 }
 
 bool ARGBTeleporterEnemyCharacter::IsTeleportPointReservedByOther(const ATargetPoint* Point) const

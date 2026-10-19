@@ -49,7 +49,7 @@ void ARGBFlyingEnemyCharacter::BeginPlay()
 	FlightPlaneY = GetActorLocation().Y;
 
 	UCharacterMovementComponent* Movement = GetCharacterMovement();
-	Movement->MaxFlySpeed = FMath::Max(MaximumFlightSpeed, 0.0f);
+	Movement->MaxFlySpeed = FMath::Max(MaximumFlightSpeed, 0.0f) * GetArenaMovementSpeedMultiplier();
 	Movement->MaxAcceleration = FMath::Max(FlightAcceleration, 0.0f);
 	Movement->BrakingDecelerationFlying = FMath::Max(FlightDeceleration, 0.0f);
 	Movement->SetPlaneConstraintEnabled(true);
@@ -176,7 +176,10 @@ void ARGBFlyingEnemyCharacter::UpdateFlight(float DeltaTime)
 	const float SafeArrivalRadius = FMath::Max(PlayerArrivalRadius, 0.0f);
 	FVector PursuitDirection = ToTarget.SizeSquared() > FMath::Square(SafeArrivalRadius) ? ToTarget.GetSafeNormal() : FVector::ZeroVector;
 	const FVector SeparationDirection = CalculateSeparationSteering();
-	FVector DesiredDirection = PursuitDirection * FMath::Max(PlayerTrackingWeight, 0.0f) + SeparationDirection * FMath::Max(EnemySeparationWeight, 0.0f);
+	const FRGBEnemyArenaAttributes& Attributes = GetArenaAttributes();
+	const float TrackingWeight = Attributes.bEnabled ? Attributes.FlightTrackingWeight : PlayerTrackingWeight;
+	const float SeparationWeight = Attributes.bEnabled ? Attributes.FlightSeparationWeight : EnemySeparationWeight;
+	FVector DesiredDirection = PursuitDirection * FMath::Max(TrackingWeight, 0.0f) + SeparationDirection * FMath::Max(SeparationWeight, 0.0f);
 	DesiredDirection.Y = 0.0f;
 
 	if (DesiredDirection.IsNearlyZero()) {
@@ -197,8 +200,11 @@ void ARGBFlyingEnemyCharacter::UpdateFlight(float DeltaTime)
 	}
 
 	SetActionState(ERGBEnemyActionState::Chase);
-	const FVector DesiredVelocity = ClearDirection * FMath::Max(MaximumFlightSpeed, 0.0f);
-	FlightVelocity = FMath::VInterpConstantTo(FlightVelocity, DesiredVelocity, DeltaTime, FMath::Max(FlightAcceleration, 0.0f));
+	const float ScaledMaximumFlightSpeed = FMath::Max(MaximumFlightSpeed, 0.0f) * GetArenaMovementSpeedMultiplier();
+	const FVector DesiredVelocity = ClearDirection * ScaledMaximumFlightSpeed;
+	const float AccelerationMultiplier = Attributes.bEnabled ? Attributes.FlightAccelerationMultiplier : 1.0f;
+	FlightVelocity = FMath::VInterpConstantTo(FlightVelocity, DesiredVelocity, DeltaTime, FMath::Max(FlightAcceleration * AccelerationMultiplier, 0.0f));
+	FlightVelocity = FlightVelocity.GetClampedToMaxSize(ScaledMaximumFlightSpeed);
 	FlightVelocity.Y = 0.0f;
 
 	const FVector StartLocation = GetActorLocation();
@@ -255,6 +261,16 @@ bool ARGBFlyingEnemyCharacter::IsPlayerWithinAttackRange(const ACharacter* Playe
 	return DeltaX * DeltaX + DeltaZ * DeltaZ <= FMath::Square(AllowedDistance);
 }
 
+bool ARGBFlyingEnemyCharacter::CanBeAttackCandidate(const ACharacter* Player) const
+{
+	if (!IsAvailableForArenaAI() || !IsValid(Player)) { return false; }
+	FCollisionQueryParams Params;
+	Params.AddIgnoredActor(this);
+	Params.AddIgnoredActor(Player);
+	FHitResult Hit;
+	return !GetWorld()->LineTraceSingleByChannel(Hit, GetActorLocation(), Player->GetActorLocation(), ECC_Visibility, Params);
+}
+
 void ARGBFlyingEnemyCharacter::HandleArenaAIActiveChanged(bool bNewActive)
 {
 	FlightVelocity = FVector::ZeroVector;
@@ -270,10 +286,19 @@ void ARGBFlyingEnemyCharacter::HandleArenaAIActiveChanged(bool bNewActive)
 	}
 }
 
+void ARGBFlyingEnemyCharacter::HandleArenaMovementSpeedMultiplierChanged(float NewMultiplier)
+{
+	Super::HandleArenaMovementSpeedMultiplierChanged(NewMultiplier);
+
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement()) {
+		Movement->MaxFlySpeed = FMath::Max(MaximumFlightSpeed, 0.0f) * FMath::Max(NewMultiplier, 0.0f);
+	}
+}
+
 FVector ARGBFlyingEnemyCharacter::CalculateSeparationSteering() const
 {
 	const UWorld* World = GetWorld();
-	const float SafeSeparationRadius = FMath::Max(EnemySeparationRadius, 0.0f);
+	const float SafeSeparationRadius = FMath::Max(GetArenaAttributes().bEnabled ? GetArenaAttributes().FlightSeparationRadius : EnemySeparationRadius, 0.0f);
 
 	if (!IsValid(World) || SafeSeparationRadius <= SMALL_NUMBER) {
 		return FVector::ZeroVector;
@@ -327,9 +352,10 @@ FVector ARGBFlyingEnemyCharacter::ChooseClearFlightDirection(const FVector& Desi
 	}
 
 	const FVector Perpendicular(-DesiredDirection.Z, 0.0f, DesiredDirection.X);
+	const float AvoidanceWeight = GetArenaAttributes().bEnabled ? GetArenaAttributes().FlightGeometryWeight : ObstacleAvoidanceWeight;
 	const FVector CandidateDirections[] = {
-		(DesiredDirection + Perpendicular * FMath::Max(ObstacleAvoidanceWeight, 0.0f)).GetSafeNormal(),
-		(DesiredDirection - Perpendicular * FMath::Max(ObstacleAvoidanceWeight, 0.0f)).GetSafeNormal(),
+		(DesiredDirection + Perpendicular * FMath::Max(AvoidanceWeight, 0.0f)).GetSafeNormal(),
+		(DesiredDirection - Perpendicular * FMath::Max(AvoidanceWeight, 0.0f)).GetSafeNormal(),
 		Perpendicular,
 		-Perpendicular,
 		FVector::UpVector,
@@ -357,7 +383,7 @@ float ARGBFlyingEnemyCharacter::MeasureObstacleClearance(const FVector& Directio
 {
 	const UWorld* World = GetWorld();
 	const UCapsuleComponent* Capsule = GetCapsuleComponent();
-	const float SafeProbeDistance = FMath::Max(ObstacleProbeDistance, 0.0f);
+	const float SafeProbeDistance = FMath::Max(GetArenaAttributes().bEnabled ? GetArenaAttributes().FlightProbeDistance : ObstacleProbeDistance, 0.0f);
 
 	if (!IsValid(World) || !IsValid(Capsule) || Direction.IsNearlyZero() || SafeProbeDistance <= SMALL_NUMBER) {
 		return 1.0f;

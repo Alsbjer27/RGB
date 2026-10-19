@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "RGBEnemyAITypes.h"
+#include "RGBArenaEnemyTuning.h"
 #include "../Platforms/RGBColorComponent.h"
 #include "GameFramework/Character.h"
 #include "RGBEnemyCharacter.generated.h"
@@ -13,6 +14,7 @@ class UMaterialInterface;
 class ARGBEnemyCharacter;
 class ARGBArenaCameraZone;
 class URGBArenaEnemyCoordinatorComponent;
+class ARGBArenaControl;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FRGBEnemyEliminatedSignature, ARGBEnemyCharacter*, EliminatedEnemy);
 
@@ -32,6 +34,18 @@ public:
 	void SetEnemyCoordinator(URGBArenaEnemyCoordinatorComponent* NewCoordinator);
 	void SetArenaCameraZone(ARGBArenaCameraZone* NewArenaCameraZone);
 	void SetArenaAIActive(bool bNewActive);
+	void SetArenaRespawnManaged(bool bManaged);
+	void PrepareForArenaRespawn();
+	void RestoreForArenaRespawn(const FTransform& SpawnTransform);
+	void SetArenaMovementSpeedMultiplier(float NewMultiplier);
+	float GetArenaMovementSpeedMultiplier() const { return ArenaMovementSpeedMultiplier; }
+	void SetOwningArena(ARGBArenaControl* NewArena);
+	ARGBArenaControl* GetOwningArena() const { return OwningArena.Get(); }
+	void ApplyArenaAttributes(const FRGBEnemyArenaAttributes& NewAttributes);
+	bool IsAvailableForArenaAI() const { return bArenaAIActive && !bEliminated && !IsHidden() && !IsActorBeingDestroyed(); }
+	virtual bool CanBeAttackCandidate(const ACharacter* Player) const;
+	virtual bool IsReadyToAttack(const ACharacter* Player) const;
+	float GetChasePreference() const { return ArenaAttributes.bEnabled ? ArenaAttributes.ChasePreference : 1.0f; }
 
 	UFUNCTION(BlueprintPure, Category = "RGB|AI")
 	ERGBEnemyActionState GetActionState() const { return ActionState; }
@@ -116,6 +130,11 @@ protected:
 
 	virtual bool IsPlayerWithinAttackRange(const ACharacter* Player) const;
 	virtual void HandleArenaAIActiveChanged(bool bNewActive);
+	virtual void HandleArenaMovementSpeedMultiplierChanged(float NewMultiplier);
+	virtual void HandleArenaAttributesChanged();
+	bool IsPlayerVisibleForChase(const ACharacter* Player) const;
+	bool CanStartAttackNow() const;
+	const FRGBEnemyArenaAttributes& GetArenaAttributes() const { return ArenaAttributes; }
 	void StartAttackAgainst(ACharacter* Player);
 	bool GetCoordinationAssignment(FRGBEnemyCoordinationAssignment& OutAssignment) const;
 	void SetActionState(ERGBEnemyActionState NewState);
@@ -130,8 +149,12 @@ protected:
 	bool IsAttackInProgress() const { return bAttacking; }
 	virtual void ApplyColorMaterial(ERGBColor Color);
 
+	UPROPERTY(Transient, VisibleInstanceOnly, BlueprintReadOnly, Category = "RGB|AI|Arena Attributes")
+	FRGBEnemyArenaAttributes ArenaAttributes;
+
 
 private:
+	friend class FRGBInactiveEnemyDamageTest;
 	bool CanWalkInDirection(float Direction, float DeltaTime) const;
 	void UpdatePlayerDetection();
 
@@ -156,6 +179,16 @@ private:
 	bool bAttacking = false;
 	double NextAttackAllowedTime = 0.0;
 	bool bArenaAIActive = true;
+	bool bArenaRespawnManaged = false;
+	float ArenaMovementSpeedMultiplier = 1.0f;
+	float BaseGroundMovementSpeed = 200.0f;
+	bool bHasCapturedGroundMovementSpeed = false;
+	double NextPatrolDirectionTime = 0.0;
+	float CurrentAttackCooldown = 1.0f;
+	void UpdateGroundMovementSpeed(bool bChasing);
+
+	UPROPERTY(Transient)
+	TObjectPtr<ARGBArenaControl> OwningArena;
 
 	UPROPERTY(Transient, VisibleInstanceOnly, Category = "RGB|AI")
 	ERGBEnemyActionState ActionState = ERGBEnemyActionState::Idle;

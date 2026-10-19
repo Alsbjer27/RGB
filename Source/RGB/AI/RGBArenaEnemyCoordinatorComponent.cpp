@@ -69,6 +69,27 @@ void URGBArenaEnemyCoordinatorComponent::SetPlayerTarget(ACharacter* NewPlayerTa
 	UpdateAssignments();
 }
 
+void URGBArenaEnemyCoordinatorComponent::ConfigureArenaPolicy(float DecisionInterval, float RoleCommitment, int32 MaximumAttackers)
+{
+	bUseArenaPolicy = true;
+	AssignmentUpdateInterval = FMath::Max(0.05f, DecisionInterval);
+	MinimumAssignmentCommitment = FMath::Max(0.0f, RoleCommitment);
+	MaximumSimultaneousAttackers = FMath::Max(0, MaximumAttackers);
+	if (UWorld* World = GetWorld()) {
+		World->GetTimerManager().SetTimer(AssignmentTimer, this, &URGBArenaEnemyCoordinatorComponent::UpdateAssignments, AssignmentUpdateInterval, true);
+	}
+	UpdateAssignments();
+}
+
+void URGBArenaEnemyCoordinatorComponent::SetMaximumAttackers(int32 MaximumAttackers)
+{
+	const int32 NewMaximum = FMath::Max(0, MaximumAttackers);
+	if (MaximumSimultaneousAttackers != NewMaximum) {
+		MaximumSimultaneousAttackers = NewMaximum;
+		UpdateAssignments();
+	}
+}
+
 bool URGBArenaEnemyCoordinatorComponent::GetAssignment(const ARGBEnemyCharacter* Enemy, FRGBEnemyCoordinationAssignment& OutAssignment) const
 {
 	const FRegisteredEnemy* Record = FindRegisteredEnemy(Enemy);
@@ -101,7 +122,7 @@ bool URGBArenaEnemyCoordinatorComponent::TryAcquireAttackPermission(ARGBEnemyCha
 		AcquiredPermissionCount += OtherRecord.bAttackPermissionAcquired ? 1 : 0;
 	}
 
-	if (!Record->bAttackPermissionAcquired && AcquiredPermissionCount >= FMath::Max(MaximumSimultaneousAttackers, 1)) {
+	if (!Enemy->IsAvailableForArenaAI() || (!Record->bAttackPermissionAcquired && AcquiredPermissionCount >= FMath::Max(MaximumSimultaneousAttackers, 0))) {
 		return false;
 	}
 
@@ -173,23 +194,55 @@ void URGBArenaEnemyCoordinatorComponent::UpdateAssignments()
 	TArray<FRegisteredEnemy*> AttackCandidates;
 
 	for (FRegisteredEnemy& Record : RegisteredEnemies) {
-		if (Record.MobilityType != ERGBEnemyMobilityType::Teleporter) {
+		ARGBEnemyCharacter* Enemy = Record.Enemy.Get();
+		if (bUseArenaPolicy) {
+			if (CurrentTime >= Record.ChaseDecisionExpiresAt) {
+				Record.bWantsChase = FMath::FRand() < Enemy->GetChasePreference();
+				Record.ChaseDecisionExpiresAt = CurrentTime + FMath::Max(MinimumAssignmentCommitment, AssignmentUpdateInterval);
+			}
+			const bool bGroundWantsChase = Record.MobilityType != ERGBEnemyMobilityType::Ground || Record.bWantsChase || Enemy->IsReadyToAttack(Player);
+			if (Record.bAttackPermissionAcquired || (bGroundWantsChase && Enemy->CanBeAttackCandidate(Player))) {
+				AttackCandidates.Add(&Record);
+			}
+		}
+		else if (Record.MobilityType != ERGBEnemyMobilityType::Teleporter) {
 			AttackCandidates.Add(&Record);
 		}
 	}
 
-	AttackCandidates.Sort([PlayerLocation, CurrentTime](const FRegisteredEnemy& Left, const FRegisteredEnemy& Right) {
+	AttackCandidates.Sort([this, Player, PlayerLocation, CurrentTime](const FRegisteredEnemy& Left, const FRegisteredEnemy& Right) {
 		const ARGBEnemyCharacter* LeftEnemy = Left.Enemy.Get();
 		const ARGBEnemyCharacter* RightEnemy = Right.Enemy.Get();
+		if (bUseArenaPolicy) {
+			if (Left.bAttackPermissionAcquired != Right.bAttackPermissionAcquired) {
+				return Left.bAttackPermissionAcquired;
+			}
+			const bool bLeftReady = LeftEnemy->IsReadyToAttack(Player);
+			const bool bRightReady = RightEnemy->IsReadyToAttack(Player);
+			if (bLeftReady != bRightReady) {
+				return bLeftReady;
+			}
+		}
 		const bool bLeftCommittedAttacker = Left.Assignment.Role == ERGBEnemyCoordinationRole::MeleeAttacker && (Left.bAttackPermissionAcquired || Left.CommitmentExpiresAt > CurrentTime);
 		const bool bRightCommittedAttacker = Right.Assignment.Role == ERGBEnemyCoordinationRole::MeleeAttacker && (Right.bAttackPermissionAcquired || Right.CommitmentExpiresAt > CurrentTime);
 		if (bLeftCommittedAttacker != bRightCommittedAttacker) {
 			return bLeftCommittedAttacker;
 		}
-		return FVector::DistSquared(LeftEnemy->GetActorLocation(), PlayerLocation) < FVector::DistSquared(RightEnemy->GetActorLocation(), PlayerLocation);
+		FVector LeftDelta = LeftEnemy->GetActorLocation() - PlayerLocation;
+		FVector RightDelta = RightEnemy->GetActorLocation() - PlayerLocation;
+		LeftDelta.Y = RightDelta.Y = 0.0f;
+		if (bUseArenaPolicy && Left.MobilityType == ERGBEnemyMobilityType::Teleporter) { LeftDelta.Z = 0.0f; }
+		if (bUseArenaPolicy && Right.MobilityType == ERGBEnemyMobilityType::Teleporter) { RightDelta.Z = 0.0f; }
+		return LeftDelta.SizeSquared() < RightDelta.SizeSquared();
 	});
 
-	const int32 AttackerCount = FMath::Min(FMath::Max(MaximumSimultaneousAttackers, 1), AttackCandidates.Num());
+	int32 AttackerCount = FMath::Min(FMath::Max(MaximumSimultaneousAttackers, bUseArenaPolicy ? 0 : 1), AttackCandidates.Num());
+	// A falling budget never cancels an attack after its animation has started.
+	if (bUseArenaPolicy) {
+		int32 InFlightCount = 0;
+		for (const FRegisteredEnemy* Candidate : AttackCandidates) { InFlightCount += Candidate->bAttackPermissionAcquired ? 1 : 0; }
+		AttackerCount = FMath::Max(AttackerCount, InFlightCount);
+	}
 	TSet<const ARGBEnemyCharacter*> SelectedAttackers;
 	for (int32 Index = 0; Index < AttackerCount; ++Index) {
 		SelectedAttackers.Add(AttackCandidates[Index]->Enemy.Get());
@@ -204,11 +257,12 @@ void URGBArenaEnemyCoordinatorComponent::UpdateAssignments()
 		FVector DesiredLocation = FVector::ZeroVector;
 		int32 DesiredSlotIndex = INDEX_NONE;
 		bool bDesiredAttackPermission = false;
+		bool bDesiredMovementTarget = true;
 
 		if (Record.MobilityType == ERGBEnemyMobilityType::Teleporter) {
 			DesiredRole = ERGBEnemyCoordinationRole::Special;
 			DesiredLocation = PlayerLocation;
-			bDesiredAttackPermission = true;
+			bDesiredAttackPermission = bUseArenaPolicy ? bSelectedAttacker : true;
 		}
 		else if (bSelectedAttacker) {
 			DesiredRole = ERGBEnemyCoordinationRole::MeleeAttacker;
@@ -219,6 +273,14 @@ void URGBArenaEnemyCoordinatorComponent::UpdateAssignments()
 			DesiredLocation = MakePressureSlotLocation(Record, PlayerLocation, PressureIndex);
 			DesiredSlotIndex = PressureIndex;
 			++PressureIndex;
+		}
+		if (bUseArenaPolicy && Record.MobilityType == ERGBEnemyMobilityType::Ground && !bSelectedAttacker) {
+			// Unselected ground enemies patrol instead of pursuing hidden player slots.
+			bDesiredMovementTarget = false;
+		}
+		if (bUseArenaPolicy && !Enemy->IsAvailableForArenaAI()) {
+			bDesiredAttackPermission = false;
+			bDesiredMovementTarget = false;
 		}
 
 		if (bCommitmentActive && Record.Assignment.Role == DesiredRole) {
@@ -231,7 +293,9 @@ void URGBArenaEnemyCoordinatorComponent::UpdateAssignments()
 		else {
 			ApplyAssignment(Record, DesiredRole, DesiredLocation, DesiredSlotIndex, bDesiredAttackPermission, CurrentTime);
 		}
+		Record.Assignment.bHasTargetLocation = bDesiredMovementTarget;
 	}
+	RefreshDebugCounters();
 }
 
 void URGBArenaEnemyCoordinatorComponent::RemoveInvalidEnemies()
@@ -286,7 +350,8 @@ void URGBArenaEnemyCoordinatorComponent::ApplyAssignment(FRegisteredEnemy& Recor
 	const ERGBEnemyCoordinationRole PreviousRole = Record.Assignment.Role;
 
 	if (Record.Assignment.Role != Role) {
-		Record.bAttackPermissionAcquired = false;
+		// New arena policy preserves an acquired permission until execution finishes.
+		if (!bUseArenaPolicy) { Record.bAttackPermissionAcquired = false; }
 	}
 
 	Record.Assignment.Role = Role;
@@ -306,9 +371,11 @@ void URGBArenaEnemyCoordinatorComponent::RefreshDebugCounters()
 {
 	RegisteredEnemyCount = RegisteredEnemies.Num();
 	ActiveAttackPermissionCount = 0;
+	CurrentAssignments.Reset();
 
 	for (const FRegisteredEnemy& Record : RegisteredEnemies) {
 		ActiveAttackPermissionCount += Record.bAttackPermissionAcquired ? 1 : 0;
+		CurrentAssignments.Add(FString::Printf(TEXT("%s: %s | eligible=%s | executing=%s | movement=%s"), *GetNameSafe(Record.Enemy.Get()), *UEnum::GetValueAsString(Record.Assignment.Role), Record.Assignment.bCanAttack ? TEXT("yes") : TEXT("no"), Record.bAttackPermissionAcquired ? TEXT("yes") : TEXT("no"), Record.Assignment.bHasTargetLocation ? TEXT("assigned") : TEXT("patrol")));
 	}
 
 	ActiveTargetReservationCount = TargetReservations.Num();

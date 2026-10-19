@@ -139,8 +139,111 @@ AoE warnings pause while the arena is inactive.
 Platform traversal and sabotage remain deferred until authored reachability and
 the living-enemy platform interaction rule are agreed.
 
+## D013 - Optional progress-scaled enemy respawn delay
+
+Status: Accepted and implemented, 2026-10-14.
+
+Arena controls may optionally scale enemy respawn delay from a configurable
+delay at zero puzzle progress to a configurable delay near completion. The
+arena samples its authoritative completion fraction when an enemy is
+eliminated and linearly interpolates the delay for that respawn timer. The
+existing fixed-delay behavior remains the default, and completing or resetting
+the arena still clears pending respawns. This adds increasing encounter
+pressure without moving completion or lifecycle authority out of C++.
+
+## D014 - Preserve enemy configuration and scale movement with progress
+
+Status: Accepted and implemented, 2026-10-15.
+
+Arena-managed enemies are retained as inactive runtime instances between
+elimination and respawn and during arena reset. Reactivation restores health,
+transform, color state, collision, AI registration, and movement state while
+preserving all Blueprint and placed-instance configuration. This prevents
+arena-specific teleporter tags, flying-enemy tuning, visual configuration, and
+random-color settings from being replaced by class defaults.
+
+Arena controls may also enable progress-scaled enemy movement. A configurable
+multiplier is linearly interpolated from zero progress to near completion and
+applied whenever arena progress changes. It scales ground walking speed and
+flying maximum speed. Since teleporters move instantaneously, the same value
+scales their movement pressure by dividing the randomized idle interval between
+teleports. The feature defaults to disabled and therefore preserves existing
+movement tuning until explicitly enabled.
+
+## D015 - Arena-owned progress profiles and animation-based attack timing
+
+Status: Accepted and implemented, 2026-10-17; integrated PIE tuning pending.
+
+The user approved arena-controlled ground, teleporter and flying profiles with
+progress endpoints and optional normalized response curves. Arena Control owns
+the profile evaluation, explicit teleport-point network and attacker budget.
+Its timer-driven coordinator shares attack permissions across all variants,
+filters threat eligibility, prioritizes ready attacks, retains active attacks
+when the budget decreases and ranks other candidates by commitment and distance.
+Ground enemies patrol randomly when unassigned and pursue visible players with
+an arena-configured boost; flyers receive pursuit, acceleration and avoidance
+weights; teleporters receive idle intervals, destination danger weighting and
+horizontal attack range (with same-level eligibility clarified in D016). Per-type movement profiles replace the previous
+shared multiplier while enabled. Existing arenas opt in through Use Arena
+Enemy Tuning; profiles and Target Points are configured on the placed arena.
+
+The user explicitly removed a separate ground attack windup from the proposal.
+The montage starts immediately and the existing AttackHitDelay remains the
+configured damage moment within playback. Neither this delay nor montage rate
+is changed by arena progress. Attack cooldown may scale; an attack snapshots
+its cooldown when it begins. Teleport charge and existing AoE warning effects
+retain their authored timing. Completed encounters retain inactive configured
+enemy instances for a later reset, avoiding loss of per-instance settings.
+
+## D016 - Teleporter same-level eligibility and bounded damage
+
+Status: Accepted and implemented, 2026-10-17; visual PIE retest pending.
+
+The user clarified that horizontal attack decisions must not allow a teleporter
+to initiate an attack against a player on a separate platform above or below it.
+Same Level Height Tolerance (60 cm by default, comparing capsule feet) is now
+an eligibility gate. Once eligible, Horizontal Attack Range and the coordinator's
+teleporter ranking use X distance only. Height is not a distance-scoring weight.
+Damage resolution rechecks eligibility and the original X/Z AoERadius; trigger
+range never creates an infinite vertical damage strip or enlarges that radius.
+This supersedes the unlimited-height interpretation in the first D015 pass.
+
+All accepted player health damage now records the source, damage and X/Z
+separation. rgb.DebugPlayerDamage optionally displays attacker names and world
+markers. Damage callbacks explicitly reject hidden and inactive enemies.
+
+## D017 - Separate Chromatic Foundry level prototype
+
+Status: Accepted by the user's level-creation request and authored, 2026-10-17.
+
+Create `/Game/RGB/Maps/L_ChromaticFoundry` as a separate level inspired by
+`L_INTRO` and `L_MapLayout`. Existing maps remain unchanged. Three successive
+red/green/blue combat puzzles reuse the current C++ arena, enemy, camera,
+checkpoint, moving platform and level transition systems. Completion-controlled
+one-way shutters connect the rooms through a rising gantry and a moving shuttle
+section. New environment materials stay inside the level's own content folder.
+No new gameplay classes, plugins, Level Blueprint logic or startup-map changes
+are needed. Current global reset semantics are preserved rather than changed as
+part of level authoring. See `CHROMATIC_FOUNDRY_LEVEL.md` for setup, design and
+actual verification limits. This is a level design prototype for playtesting.
+
 ## Future decision entry format
 
 Use a stable D-number, title, date, status (Proposed/Accepted/Open/Superseded),
 context, decision, consequences, and relevant milestone. Identify the source
 of acceptance and link a replacement when superseding a decision.
+## D018 - HUD progress follows the player's current arena (2026-10-18)
+
+The prototype HUD previously used GetActorOfClass once and subscribed only to
+that arena. This left later rooms' progress disconnected. Its new native
+URGBHUDWidget parent selects from cached arena controls using the current
+owning pawn and each control's configured camera bounds. Arena controls retain
+authoritative completion. Only the liquid display and smoothing move to the
+native widget; the existing Blueprint layout and health presentation remain.
+Outside an arena the fill is zero, and switching rooms uses that room's stored
+progress. UMG is an explicit runtime dependency. The editor-only path in
+RGBUpgradeHUDCommandlet migrates only the audited HUD asset through Unreal's
+graph APIs and compiler, preserving health graph nodes and refusing an unexpected
+layout. A newly constructed HUD removes older viewport HUDs for its owning player;
+the respawn check exposed that the character creates a new HUD each time.
+No level assets need to change for this fix.

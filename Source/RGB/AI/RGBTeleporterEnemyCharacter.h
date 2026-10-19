@@ -24,11 +24,15 @@ public:
 
 	virtual void Tick(float DeltaTime) override;
 	virtual ERGBEnemyMobilityType GetEnemyMobilityType() const override { return ERGBEnemyMobilityType::Teleporter; }
+	virtual bool CanBeAttackCandidate(const ACharacter* Player) const override;
+	virtual bool IsReadyToAttack(const ACharacter* Player) const override;
 
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void HandleArenaAIActiveChanged(bool bNewActive) override;
+	virtual void HandleArenaMovementSpeedMultiplierChanged(float NewMultiplier) override;
+	virtual void HandleArenaAttributesChanged() override;
 
 	UPROPERTY(EditAnywhere, Category = "RGB|Teleport|Timing", meta = (ClampMin = "0.1", Units = "s"))
 	float MinimumTeleportIdleTime = 1.5f;
@@ -100,6 +104,7 @@ protected:
 	TObjectPtr<UNiagaraComponent> AoEWarningEffect;
 
 private:
+	friend class FRGBInactiveEnemyDamageTest;
 	void FindTeleportPoints();
 	void TryTeleport();
 
@@ -118,6 +123,7 @@ private:
 	void TryStartAoEAttack();
 	void ResolveAoEAttack();
 	bool IsPlayerWithinAoERadius(const ACharacter* Player) const;
+	bool IsPlayerEligibleForAoEAttack(const ACharacter* Player) const;
 
 	void SetAoEWarningActive(bool bActive);
 
@@ -138,4 +144,6 @@ private:
 	double NextAoEAttackAllowedTime = 0.0;
 
 	bool IsTeleportDestinationClear(const FVector& Destination) const;
+	bool IsPointInsideOwningArena(const ATargetPoint* Point) const;
+	float PendingAoECooldown = 2.0f;
 };

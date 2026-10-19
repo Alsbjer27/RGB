@@ -6,7 +6,7 @@ Document purpose
 
 This document explains how the enemy AI currently implemented in RGB works. It
 is intended to be a reliable technical reference and a base for a later AI
-presentation. It describes the actual C++ implementation as of 2026-10-13,
+presentation. It describes the actual C++ implementation as of 2026-10-17,
 including the shared enemy framework, arena-level multi-agent coordination,
 ground enemies, teleporting enemies, flying enemies, attacks, damage,
 respawning, editor configuration, and known limitations.
@@ -25,6 +25,122 @@ This is a lightweight multi-agent system. It is not implemented with Unreal
 Behavior Trees, blackboards, EQS, or NavMesh pathfinding. The authoritative
 rules are implemented directly in C++ using explicit state, timers, collision
 queries, and short-lived coordination assignments.
+
+ARENA-DRIVEN PRESSURE PROFILES (2026-10-17)
+==========================================
+
+Arena Control is the tuning authority for its area. Enable Use Arena Enemy
+Tuning under RGB > Arena > AI. Ground Enemy Tuning, Teleporter Enemy Tuning,
+Flying Enemy Tuning and Coordination Tuning then supply the settings for all
+enemies owned by that arena. This option lets existing arenas adopt the profiles
+individually. An enemy cannot be registered to two different arena owners.
+
+Each progress value has At No Progress, Near Completion, and an optional
+Response Curve. Completion is the true puzzle fraction from 0 to 1; hiding the
+UI progress bar on camera-zone exit does not change this fraction. Without a
+curve the values interpolate linearly. Curves map completion to a bounded blend
+factor, allowing a gradual rise or escalation late in the encounter. Attributes
+decrease again when platform progress is lost. At full completion the encounter
+ends; endpoint values describe the limiting pressure just before success.
+
+Per-type profiles replace the older shared movement multiplier when enabled,
+so their values do not accidentally stack. Respawn delay keeps its separate
+toggle. Runtime values are visible on enemies under Arena Attributes. Reset
+and respawn reapply the current arena settings and retain authored enemy values.
+
+Coordination
+------------
+
+Maximum Attackers is a progress value rounded down and clamped to zero or more.
+The default 1-to-3 range permits one attacker below 50 percent, two from 50
+percent and three at the endpoint. Adjust the endpoint or curve to admit more
+attackers earlier. Decision Interval defaults to 0.2 seconds, with one second
+of Minimum Role Commitment.
+
+The coordinator filters active, living enemies for threat eligibility. Ground
+enemies require ground, sight, similar height and a locally clear direction;
+flyers require sight; teleporters require the same combat level, horizontal attack
+range and no active teleport. Attacks already executing keep their acquired permissions. Ready-to-hit
+enemies take priority over distant pursuers, followed by committed roles and
+distance in X/Z (X only for teleporters). A decreasing budget lets existing
+attacks finish while preventing new attacks above the new limit.
+
+All three enemy types share this budget. Unselected ground enemies patrol.
+Flyers continue tracking but need selection to attack. Teleport relocation is
+independent of attack permission. Current Assignments on the EnemyCoordinator
+component lists each enemy's role, attack eligibility, execution and movement.
+
+Ground profile
+--------------
+
+- Patrol Speed Multiplier and Chase Speed Multiplier independently scale the
+  enemy's authored Max Walk Speed; they are not multiplied by one another.
+- Chase Preference (0..1) controls pursuit participation. Each random decision
+  persists for a commitment interval. An enemy already in melee range can
+  defend itself even with low chase preference.
+- Detection Range and Attack Cooldown Multiplier can increase with progress.
+- Patrol periodically chooses left or right using Minimum and Maximum Patrol
+  Direction Time. Wall and ledge probes continue to reject unsafe movement.
+- There is no separate preparation delay. The attack montage begins immediately.
+  Attack Hit Delay is still the user's damage moment measured from animation
+  start. Arena progress never changes that timing or montage playback rate.
+
+Teleporter profile
+------------------
+
+- Fill Teleport Target Points on the Arena Control with placed Target Point
+  actors. Enabled arena tuning uses this list instead of tag/radius discovery.
+  Points must be inside that arena camera zone; invalid entries log a warning.
+- Minimum and Maximum Idle Time blend with progress. A progress change refreshes
+  an idle wait; active teleport charges and attacks retain their current timing.
+- Danger Radius scores authored destinations around the player in X/Z. Selection
+  blends relative proximity, closeness inside that radius and randomness, using
+  Player Proximity Weight. Destinations must remain unoccupied and unreserved.
+- The destination capsule must fit inside the camera zone. Points represent
+  platform surfaces; the capsule half-height is added and Y remains constrained.
+- Same Level Height Tolerance compares feet heights before attack eligibility
+  (default 60 cm), rejecting players on a different floor. Once eligible,
+  Horizontal Attack Range uses only X distance; vertical distance does not
+  contribute to the coordinator's teleporter distance score.
+- Damage is separately bounded by the authored AoE Radius in X/Z. At resolution
+  both same-level/horizontal eligibility and the actual AoE radius are checked
+  again. Trigger range does not enlarge the damage radius.
+- Attack Cooldown Multiplier controls repetition separately from teleport idle
+  time. Existing teleport charge effects and Niagara AoE warning timing remain.
+
+Flying profile
+--------------
+
+- Speed Multiplier and Acceleration Multiplier scale the authored flight values.
+- Player Tracking Weight, Enemy Separation Weight/Radius, Geometry Avoidance
+  Weight and Geometry Probe Distance each have progress endpoints and a curve.
+- Faster, tighter pursuit still uses swept collision and camera-zone confinement.
+- Attack Cooldown Multiplier changes repetition; attack hit timing stays fixed.
+
+Setup: enable Use Arena Enemy Tuning, assign the arena's Teleport Target Points,
+and tune the profile endpoints. Keep each enemy in its owning arena's Assigned
+Enemies list. Conflicting arena ownership is rejected with a warning.
+
+The remaining sections explain the common execution systems. References to tag
+discovery, shared speed scaling and ground pressure slots describe the legacy
+mode used when Use Arena Enemy Tuning is disabled.
+
+Finding damage that is difficult to see
+---------------------------------------
+
+All accepted player health damage now logs its source under LogRGBPlayerDamage,
+including attacker name/class, source and player positions, horizontal/vertical
+separation, damage amount and remaining health. RecieveDamage remains available
+to Blueprints; unattributed calls are labeled accordingly. Last Damage Source
+and Last Damage Amount are visible on the player instance during PIE.
+
+Enter rgb.DebugPlayerDamage 1 in the PIE console or Output Log command field to
+display the attacker name and draw a red line/sphere at the attacker for six
+seconds after a hit. Use rgb.DebugPlayerDamage 0 to disable these temporary
+visuals. Hidden or inactive enemies and obsolete attack callbacks cannot apply
+damage. The corrected teleporter rule rejects attacks between different combat
+levels and limits damage to AoE Radius. These diagnostics identify any remaining
+damage source, including enemies off-screen or unattributed Blueprint calls.
 
 
 1. MAIN CLASSES AND RESPONSIBILITIES
@@ -110,7 +226,8 @@ This actor owns the lifecycle around the AI:
 - It listens for elimination events.
 - It unregisters eliminated enemies from coordination.
 - It can respawn enemies after a configurable delay.
-- It recreates enemies at their recorded spawn transforms.
+- It retains eliminated enemies as inactive instances and restores them at
+  their recorded spawn transforms, preserving instance configuration.
 - It reconnects respawned enemies to the coordinator and camera zone.
 - It activates enemies only while the player is inside the arena camera zone.
 - It removes enemies and cancels respawns when the arena is completed.
@@ -194,8 +311,9 @@ Chase
 Turning
     A ground enemy is playing or simulating its direction-change sequence.
 
-AttackWindup
-    A shared melee attack has begun and is waiting for its damage moment.
+Attacking
+    The attack animation is playing. Damage occurs at AttackHitDelay after it
+    starts. The older AttackWindup enum entry remains for asset compatibility.
 
 AttackCooldown
     The previous attack has finished and the enemy must wait before beginning
@@ -244,7 +362,7 @@ While inactive:
 
 - Ground movement and player detection are suppressed.
 - Flying pursuit velocity is cleared.
-- Shared attack windups and damage timers are canceled.
+- Shared attack execution and damage timers are canceled.
 - Coordinator attack permission is released.
 - Teleport timers, active teleport charges, and AoE windups are canceled.
 - Teleport and AoE Niagara warning components are deactivated.
@@ -263,6 +381,23 @@ When the player exits, the same enemies return to Idle. An enemy that respawns
 inherits the arena's current active state, so it cannot begin acting outside an
 inactive arena.
 
+Progress-based movement pressure
+--------------------------------
+
+The arena can optionally scale enemy movement with puzzle completion. It
+linearly blends between Enemy Movement Speed Multiplier At No Progress and
+Enemy Movement Speed Multiplier Near Completion whenever platform progress
+changes. The resulting multiplier is applied to every active enemy and is also
+applied when an enemy registers or returns from respawn.
+
+- Ground enemies multiply their configured Character Movement Max Walk Speed.
+- Flying enemies multiply their configured Maximum Flight Speed.
+- Teleporters divide their randomized idle interval by the multiplier, because
+  their actual relocation is instantaneous rather than velocity-based.
+
+The option is disabled by default. Its default enabled range is 1.0 times speed
+at zero progress to 1.5 times speed near completion.
+
 Assignment update timing
 ------------------------
 
@@ -273,7 +408,7 @@ react to the player without requiring group-level logic every Tick.
 Selecting attackers
 -------------------
 
-On every assignment update:
+With Use Arena Enemy Tuning disabled, the original assignment update is:
 
 1. Invalid or destroyed enemy references are removed.
 2. The player is resolved from the stored target or player index 0.
@@ -456,7 +591,7 @@ When an attack begins:
 
 1. Movement stops.
 2. The optional AttackMontage plays if one is assigned.
-3. The action state becomes AttackWindup.
+3. The action state becomes Attacking, with no separate preparation timer.
 4. A damage timer is scheduled using AttackHitDelay.
 5. A finish timer is scheduled using AttackDuration.
 
@@ -666,7 +801,8 @@ This was added to make collision and axis errors visible in the Output Log.
 Authored teleport network
 -------------------------
 
-Teleporters do not choose arbitrary world positions. They search for
+With arena tuning enabled, teleporters use the explicit Teleport Target Points
+array on the Arena Control. In the legacy mode, they search for
 ATargetPoint actors with TeleportPointTag, which defaults to TeleporterPoint.
 Only points inside TeleportPointSearchRadius of the teleporter's starting
 location are retained.
@@ -695,7 +831,8 @@ An attempt is postponed if:
 - The player cannot be found.
 - The player is not near any of the teleporter's valid Target Points.
 
-The proximity threshold uses the inherited DetectionRange.
+That final proximity gate applies only in legacy mode and uses DetectionRange.
+Enabled arena profiles allow teleport movement whenever the encounter is active.
 
 Candidate filtering
 -------------------
@@ -767,6 +904,12 @@ The attack begins only when:
 - AoECooldown has expired.
 - The player is within AoERadius in the X/Z plane.
 - Coordinator attack permission is acquired.
+
+When arena tuning is enabled, attack selection first requires similar feet
+heights (Same Level Height Tolerance), then uses Horizontal Attack Range.
+Actual damage still requires the X/Z AoE Radius, plus revalidated same-level
+and horizontal eligibility. A player on another floor cannot trigger or take
+this attack merely by sharing the teleporter's X position.
 
 The warning Niagara component activates during AoEWindupDuration. When the
 windup ends, the warning deactivates and attack permission is released. The
@@ -850,14 +993,29 @@ When OnEnemyEliminated fires, the arena:
 - Removes the actor from live enemy collections.
 - Starts a respawn timer if respawning is enabled and the arena is active.
 
-EnemyRespawnDelay defaults to 5 seconds. A zero delay schedules the respawn for
-the next Tick rather than recursively spawning during elimination handling.
+By default, EnemyRespawnDelay supplies one fixed delay and defaults to 5
+seconds. A zero delay schedules the respawn for the next Tick rather than
+recursively spawning during elimination handling.
+
+The arena can optionally enable Scale Enemy Respawn Delay With Arena Progress.
+When enabled, the fixed delay is replaced by a linear blend between Enemy
+Respawn Delay At No Progress and Enemy Respawn Delay Near Completion. The
+authoritative completion fraction is sampled when the enemy is eliminated, so
+an arena with more correctly colored platforms schedules a faster respawn. The
+default adaptive range is 8 seconds at 0 percent progress to 2 seconds near
+100 percent progress. Completing the arena still cancels every pending respawn.
 
 Respawn
 -------
 
-The enemy is recreated using its recorded class and transform with
-AlwaysSpawn collision handling. The arena then reconnects the new actor to:
+The eliminated actor becomes hidden, non-colliding, inactive, and unavailable
+to the coordinator while its respawn timer runs. The actor is restored at its
+recorded transform when the timer finishes. Reusing the configured instance
+preserves all placed-instance and Blueprint settings, including arena-specific
+Teleport Point Tags, flying movement tuning, component setup, and the color
+component's Randomize Initial Color option. The color component is reset during
+restoration, so enabled randomization selects a new starting color. The arena
+then reconnects the actor to:
 
 - Its spawn record.
 - The elimination event.
@@ -868,12 +1026,13 @@ Arena reset and completion
 --------------------------
 
 During reset, pending respawn timers are canceled, coordination is cleared,
-live enemies are removed, and the recorded enemies are recreated when reset
-finishes.
+and live or waiting enemies are made inactive. The same configured instances
+are restored at their recorded transforms when reset finishes.
 
 When the arena completes, pending respawns are canceled, coordination is reset,
-and remaining enemies are despawned without triggering ordinary color-hit
-elimination behavior.
+and enemies become hidden, non-colliding and inactive without normal color-hit
+elimination. Their configured instances are retained so a later arena reset
+can restore the same settings even after completion.
 
 
 11. BLUEPRINT AND LEVEL-DESIGN RESPONSIBILITIES
@@ -951,7 +1110,11 @@ For full coordination and lifecycle behavior:
 - Assign its ArenaCameraZone.
 - Add initially placed enemies to AssignedEnemies, or spawn later enemies
   inside the zone after arena startup.
-- Set enemy respawn behavior and delay on the arena control.
+- Set enemy respawn behavior on the arena control. Choose either the fixed
+  Enemy Respawn Delay or enable progress scaling and set the no-progress and
+  near-completion delays.
+- Optionally enable Scale Enemy Movement Speed With Arena Progress and set its
+  no-progress and near-completion multipliers.
 - Place and tag Target Points for each teleporter network.
 - Ensure blocking level geometry responds to the Pawn collision channel.
 - Ensure visual and Niagara assets are assigned in Blueprint defaults.
@@ -1038,8 +1201,8 @@ Slide 4: Attacker and pressure selection
     the simultaneous-attacker limit.
 
 Slide 5: Ground enemy
-    Show patrol, ledge/wall probing, player detection, chase, attack windup,
-    damage, and cooldown.
+    Show random patrol, ledge/wall probing, visible-player chase and speed boost,
+    immediate attack animation, configured damage moment, and cooldown.
 
 Slide 6: Teleporter enemy
     Show authored points, candidate rejection, weighted randomness, reservation,
@@ -1057,13 +1220,93 @@ Slide 9: Arena lifecycle
     Explain registration, elimination events, delayed respawn, reset, and arena
     completion cleanup.
 
-Slide 10: Strengths and limitations
+Slide 10: Considered reinforcement-learning workflow
+    Explain that Unreal-MAP was investigated as a possible multi-agent
+    reinforcement-learning workflow. Describe its potential for automated
+    simulation, learned cooperation, and AI evaluation, followed by the scope
+    reasons for retaining the existing deterministic C++ architecture.
+
+Slide 11: Strengths and limitations
     Present the system as an explicit, debuggable C++ foundation and identify
     platform traversal, puzzle-aware decisions, and advanced path planning as
     future development.
 
 
-15. SHORT SUMMARY FOR SPEAKING NOTES
+15. INVESTIGATED UNREAL-MAP WORKFLOW AND SCOPE DECISION
+=======================================================
+
+Unreal-MAP repository:
+https://github.com/binary-husky/unreal-map
+
+Unreal-MAP is a research platform for multi-agent reinforcement learning in
+Unreal Engine. It provides a workflow in which Unreal supplies a simulated
+environment while an external Python system observes agents, selects actions,
+assigns rewards, and repeats encounters across many training episodes. This
+could potentially be used to train cooperation between different enemy types,
+run automated arena simulations, compare AI strategies, and gather balancing
+data without manually replaying every encounter.
+
+The workflow was investigated as a possible extension for RGB. A suitable RGB
+training interface would need to expose observations such as the player's
+position, velocity, health and color; enemy positions, states and cooldowns;
+platform colors; arena boundaries; and nearby obstacles. It would also need to
+define a controlled set of actions such as moving, holding distance, attacking,
+teleporting, retreating, or remaining idle. Reward rules would then be required
+for useful pressure, damage, spacing, survival, collision avoidance, and
+remaining inside the active arena.
+
+This approach was not adopted during the project because its implementation
+scope became too large relative to how far development had already progressed.
+Unreal-MAP is presented as a complete research environment rather than a small
+enemy-AI plugin. Its documented setup targets a source-built Unreal Engine 4.27
+environment, while RGB uses Unreal Engine 5.7. Adopting it would therefore have
+required engine-version migration work, an external Python training pipeline,
+new communication and episode-reset interfaces, additional dependencies, and
+a redesign of parts of the established C++ enemy architecture. Training,
+evaluating, and converting a learned policy into reliable game behavior would
+also require substantial time beyond the integration itself.
+
+RGB already had a functioning deterministic C++ architecture with explicit
+enemy states, arena ownership, attack permissions, destination reservations,
+respawning, and specialized movement for each enemy type. Continuing with that
+architecture kept the behavior debuggable, directly tunable in Unreal, and
+achievable within the project schedule. Unreal-MAP was therefore retained as a
+researched alternative and possible future-work direction rather than being
+integrated late in development.
+
+Presentation-ready slide text
+-----------------------------
+
+I investigated Unreal-MAP as a possible workflow for training coordinated
+enemy behavior through multi-agent reinforcement learning. It could support
+automated simulations, learned cooperation, and AI evaluation. However,
+adopting it would require a separate Python training pipeline, custom
+environment interfaces, additional dependencies, and considerable migration
+work from Unreal Engine 4.27 to 5.7. Because the project already had an
+established C++ AI architecture, the integration exceeded the available scope.
+I therefore continued with a deterministic, state-based multi-agent
+coordination system.
+
+Short presentation bullets
+--------------------------
+
+- Investigated Unreal-MAP for multi-agent reinforcement learning.
+- Potential benefits included automated training, coordination, and testing.
+- Required a Python training pipeline and major Unreal-version integration.
+- RGB already had substantial C++ AI infrastructure.
+- Chose deterministic state-based coordination to keep the project achievable.
+- Retained reinforcement learning as possible future work.
+
+Suggested speaking note
+-----------------------
+
+Unreal-MAP was technically relevant, but introducing it late would have meant
+rebuilding much of the existing AI around an external training workflow. I
+treated it as useful future work rather than risking the stability and
+completion of the current project.
+
+
+16. SHORT SUMMARY FOR SPEAKING NOTES
 ====================================
 
 RGB uses an arena-scoped multi-agent coordinator combined with autonomous enemy
@@ -1084,6 +1327,8 @@ Primary source files
 ====================
 
 Source/RGB/AI/RGBEnemyAITypes.h
+Source/RGB/AI/RGBArenaEnemyTuning.h
+Source/RGB/AI/RGBArenaEnemyTuning.cpp
 Source/RGB/AI/RGBArenaEnemyCoordinatorComponent.h
 Source/RGB/AI/RGBArenaEnemyCoordinatorComponent.cpp
 Source/RGB/AI/RGBEnemyCharacter.h

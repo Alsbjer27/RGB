@@ -24,6 +24,7 @@ public:
 
 	virtual void Tick(float DeltaTime) override;
 	virtual ERGBEnemyMobilityType GetEnemyMobilityType() const override { return ERGBEnemyMobilityType::Flying; }
+	virtual bool CanBeAttackCandidate(const ACharacter* Player) const override;
 
 protected:
 	virtual void BeginPlay() override;
@@ -31,6 +32,7 @@ protected:
 	virtual void ApplyColorMaterial(ERGBColor Color) override;
 	virtual bool IsPlayerWithinAttackRange(const ACharacter* Player) const override;
 	virtual void HandleArenaAIActiveChanged(bool bNewActive) override;
+	virtual void HandleArenaMovementSpeedMultiplierChanged(float NewMultiplier) override;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RGB|Flying|Visuals")
 	TObjectPtr<UStaticMeshComponent> FlyingBody;

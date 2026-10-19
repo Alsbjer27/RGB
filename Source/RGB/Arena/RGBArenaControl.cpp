@@ -11,6 +11,7 @@
 #include "../AI/RGBEnemyCharacter.h"
 #include "../AI/RGBArenaEnemyCoordinatorComponent.h"
 #include "Engine/World.h"
+#include "Engine/TargetPoint.h"
 
 #include "Kismet/GameplayStatics.h"
 
@@ -49,6 +50,7 @@ void ARGBArenaControl::BeginArenaReset()
 	bCompleted = false;
 	MatchingPlatformCount = 0;
 	CompletionPercentage = 0.0f;
+	ApplyEnemyMovementSpeedMultiplier();
 
 	OnArenaResetStarted.Broadcast();
 	OnArenaProgressChanged.Broadcast(0.0f);
@@ -63,8 +65,19 @@ void ARGBArenaControl::BeginArenaReset()
 
 	for (ARGBEnemyCharacter* Enemy : AssignedEnemies) {
 		if (IsValid(Enemy)) {
+			const int32* SpawnRecordIndex = EnemySpawnRecordIndices.Find(Enemy);
 			Enemy->OnEnemyEliminated.RemoveDynamic(this, &ARGBArenaControl::HandleEnemyEliminated);
-			Enemy->DespawnForArenaCompletion();
+			Enemy->SetEnemyCoordinator(nullptr);
+			Enemy->SetArenaCameraZone(nullptr);
+			Enemy->SetArenaRespawnManaged(true);
+			Enemy->PrepareForArenaRespawn();
+
+			if (SpawnRecordIndex && EnemySpawnRecord.IsValidIndex(*SpawnRecordIndex)) {
+				PendingRespawnEnemies.Add(*SpawnRecordIndex, Enemy);
+			}
+			else {
+				Enemy->DespawnForArenaCompletion();
+			}
 		}
 	}
 
@@ -88,6 +101,15 @@ void ARGBArenaControl::BeginPlay()
 {
 	Super::BeginPlay();
 
+	if (bUseArenaEnemyTuning) {
+		EnemyCoordinator->ConfigureArenaPolicy(CoordinationTuning.DecisionInterval, CoordinationTuning.MinimumRoleCommitment, FMath::Max(0, FMath::FloorToInt(CoordinationTuning.MaximumAttackers.Evaluate(0.0f))));
+		for (ATargetPoint* Point : TeleportTargetPoints) {
+			if (!IsValid(Point) || (IsValid(ArenaCameraZone) && !ArenaCameraZone->ContainWorldLocation(Point->GetActorLocation()))) {
+				UE_LOG(LogTemp, Warning, TEXT("%s has a missing or out-of-zone Teleport Target Point: %s."), *GetName(), *GetNameSafe(Point));
+			}
+		}
+	}
+
 	for (ARGBColorPlatform* Platform : AssignedPlatforms) {
 		if (!IsValid(Platform)) {
 			continue;
@@ -103,6 +125,7 @@ void ARGBArenaControl::BeginPlay()
 	for (ARGBEnemyCharacter* Enemy : AssignedEnemies) {
 		RecordEnemySpawn(Enemy);
 	}
+	AssignedEnemies.RemoveAll([this](const ARGBEnemyCharacter* Enemy) { return !IsValid(Enemy) || Enemy->GetOwningArena() != this; });
 
 	if (IsValid(ArenaCameraZone))
 	{
@@ -155,6 +178,13 @@ void ARGBArenaControl::EndPlay(const EEndPlayReason::Type EndPlayReason)
 			Enemy->OnEnemyEliminated.RemoveDynamic(this, &ARGBArenaControl::HandleEnemyEliminated);
 		}
 	}
+
+	for (TPair<int32, TObjectPtr<ARGBEnemyCharacter>>& PendingRespawn : PendingRespawnEnemies) {
+		if (IsValid(PendingRespawn.Value)) {
+			PendingRespawn.Value->DespawnForArenaCompletion();
+		}
+	}
+	PendingRespawnEnemies.Reset();
 
 	EnemySpawnRecordIndices.Reset();
 
@@ -223,6 +253,8 @@ void ARGBArenaControl::UpdateProgress() {
 
 	if (!bValidSetup) {
 		MatchingPlatformCount = 0;
+		CompletionPercentage = 0.0f;
+		ApplyEnemyMovementSpeedMultiplier();
 
 		ProgressText->SetText(FText::FromString(TEXT("Arena setup error - check assigned platforms")));
 		UE_LOG(LogTemp, Warning, TEXT("%s: assign at least one platform, with no missing or ") TEXT("duplicate entries, and select a valid required color."), *GetName());
@@ -233,6 +265,7 @@ void ARGBArenaControl::UpdateProgress() {
 	const int32 TotalPlatforms = AssignedPlatforms.Num();
 
 	CompletionPercentage = 100.0f * MatchingPlatformCount / TotalPlatforms;
+	ApplyEnemyMovementSpeedMultiplier();
 
 	OnArenaProgressChanged.Broadcast(GetCompletionFraction());
 
@@ -274,9 +307,19 @@ void ARGBArenaControl::CompleteArena()
 	for (ARGBEnemyCharacter* Enemy : AssignedEnemies) {
 		if (IsValid(Enemy)) {
 			Enemy->OnEnemyEliminated.RemoveDynamic(this, &ARGBArenaControl::HandleEnemyEliminated);
-			Enemy->DespawnForArenaCompletion();
+			const int32* RecordIndex = EnemySpawnRecordIndices.Find(Enemy);
+			Enemy->SetEnemyCoordinator(nullptr);
+			Enemy->SetArenaRespawnManaged(true);
+			Enemy->PrepareForArenaRespawn();
+			if (RecordIndex) {
+				PendingRespawnEnemies.Add(*RecordIndex, Enemy);
+			}
+			else {
+				Enemy->DespawnForArenaCompletion();
+			}
 		}
 	}
+	AssignedEnemies.Reset();
 
 	EnemySpawnRecordIndices.Reset();
 
@@ -292,6 +335,12 @@ void ARGBArenaControl::HandleActorSpawned(AActor* SpawnedActor)
 void ARGBArenaControl::RegisterEnemyIfInsideArena(ARGBEnemyCharacter* Enemy)
 {
 	if (!IsValid(Enemy) || !IsValid(ArenaCameraZone) || !ArenaCameraZone->ContainWorldLocation(Enemy->GetActorLocation())) {
+		return;
+	}
+	if (Enemy->GetOwningArena() && Enemy->GetOwningArena() != this) {
+		return;
+	}
+	if (const ARGBArenaControl* SpawningArena = Cast<ARGBArenaControl>(Enemy->GetOwner()); SpawningArena && SpawningArena != this) {
 		return;
 	}
 
@@ -312,19 +361,16 @@ void ARGBArenaControl::RecordEnemySpawn(ARGBEnemyCharacter* Enemy)
 	if (!IsValid(Enemy)) {
 		return;
 	}
+	if (Enemy->GetOwningArena() && Enemy->GetOwningArena() != this) {
+		UE_LOG(LogTemp, Warning, TEXT("%s cannot register %s: already owned by arena %s."), *GetName(), *GetNameSafe(Enemy), *GetNameSafe(Enemy->GetOwningArena()));
+		return;
+	}
 
 	const TSubclassOf<ARGBEnemyCharacter> EnemyClass = Enemy->GetClass();
 	const FTransform SpawnTransform = Enemy->GetActorTransform();
-	int32 SpawnRecordIndex = INDEX_NONE;
-
-	for (int32 Index = 0; Index < EnemySpawnRecord.Num(); ++Index) {
-		const FRGBArenaEnemySpawnRecord& ExistingRecord = EnemySpawnRecord[Index];
-
-		if (ExistingRecord.EnemyClass == EnemyClass && ExistingRecord.SpawnTransform.Equals(SpawnTransform)) {
-			SpawnRecordIndex = Index;
-			break;
-		}
-	}
+	// Records belong to instances, including two configured enemies at the same transform.
+	int32 SpawnRecordIndex = EnemySpawnRecordIndices.FindRef(Enemy);
+	if (!EnemySpawnRecordIndices.Contains(Enemy)) { SpawnRecordIndex = INDEX_NONE; }
 
 	if (SpawnRecordIndex == INDEX_NONE) {
 		FRGBArenaEnemySpawnRecord NewRecord;
@@ -379,8 +425,13 @@ void ARGBArenaControl::TrackEnemySpawnRecord(ARGBEnemyCharacter* Enemy, int32 Sp
 	AssignedEnemies.AddUnique(Enemy);
 	EnemySpawnRecordIndices.Add(Enemy, SpawnRecordIndex);
 	Enemy->OnEnemyEliminated.AddUniqueDynamic(this, &ARGBArenaControl::HandleEnemyEliminated);
+	Enemy->SetOwningArena(this);
 	Enemy->SetArenaCameraZone(ArenaCameraZone);
 	Enemy->SetEnemyCoordinator(EnemyCoordinator);
+	Enemy->SetArenaRespawnManaged(bRespawnEliminatedEnemies);
+	const FRGBEnemyArenaAttributes Attributes = CalculateEnemyAttributes(Enemy);
+	Enemy->ApplyArenaAttributes(Attributes);
+	Enemy->SetArenaMovementSpeedMultiplier(bUseArenaEnemyTuning ? Attributes.MovementSpeedMultiplier : CalculateEnemyMovementSpeedMultiplier());
 	Enemy->SetArenaAIActive(bPlayerInsideArena);
 
 	if (IsValid(EnemyCoordinator)) {
@@ -413,13 +464,17 @@ void ARGBArenaControl::HandleEnemyEliminated(ARGBEnemyCharacter* EliminatedEnemy
 	AssignedEnemies.Remove(EliminatedEnemy);
 
 	if (!bRespawnEliminatedEnemies || bCompleted || bResetInProgress || !EnemySpawnRecord.IsValidIndex(SpawnRecordIndex)) {
+		EliminatedEnemy->SetArenaRespawnManaged(false);
 		return;
 	}
+
+	EliminatedEnemy->PrepareForArenaRespawn();
+	PendingRespawnEnemies.Add(SpawnRecordIndex, EliminatedEnemy);
 
 	FTimerDelegate RespawnDelegate;
 	RespawnDelegate.BindUObject(this, &ARGBArenaControl::RespawnEnemyFromRecord, SpawnRecordIndex);
 
-	const float SafeRespawnDelay = FMath::Max(EnemyRespawnDelay, 0.0f);
+	const float SafeRespawnDelay = CalculateEnemyRespawnDelay();
 
 	if (SafeRespawnDelay <= SMALL_NUMBER) {
 		EnemyRespawnTimers.Add(SpawnRecordIndex, GetWorldTimerManager().SetTimerForNextTick(RespawnDelegate));
@@ -430,16 +485,112 @@ void ARGBArenaControl::HandleEnemyEliminated(ARGBEnemyCharacter* EliminatedEnemy
 	GetWorldTimerManager().SetTimer(RespawnTimer, RespawnDelegate, SafeRespawnDelay, false);
 }
 
+float ARGBArenaControl::CalculateEnemyRespawnDelay() const
+{
+	if (!bScaleEnemyRespawnDelayWithArenaProgress) {
+		return FMath::Max(EnemyRespawnDelay, 0.0f);
+	}
+
+	const float DelayAtNoProgress = FMath::Max(EnemyRespawnDelayAtNoProgress, 0.0f);
+	const float DelayNearCompletion = FMath::Max(EnemyRespawnDelayNearCompletion, 0.0f);
+	return FMath::Lerp(DelayAtNoProgress, DelayNearCompletion, GetCompletionFraction());
+}
+
+float ARGBArenaControl::CalculateEnemyMovementSpeedMultiplier() const
+{
+	if (!bScaleEnemyMovementSpeedWithArenaProgress) {
+		return 1.0f;
+	}
+
+	const float MultiplierAtNoProgress = FMath::Max(EnemyMovementSpeedMultiplierAtNoProgress, 0.0f);
+	const float MultiplierNearCompletion = FMath::Max(EnemyMovementSpeedMultiplierNearCompletion, 0.0f);
+	return FMath::Lerp(MultiplierAtNoProgress, MultiplierNearCompletion, GetCompletionFraction());
+}
+
+void ARGBArenaControl::ApplyEnemyMovementSpeedMultiplier()
+{
+	const float MovementSpeedMultiplier = CalculateEnemyMovementSpeedMultiplier();
+	if (bUseArenaEnemyTuning && IsValid(EnemyCoordinator)) {
+		CurrentMaximumAttackers = FMath::Max(0, FMath::FloorToInt(CoordinationTuning.MaximumAttackers.Evaluate(GetCompletionFraction())));
+		EnemyCoordinator->SetMaximumAttackers(CurrentMaximumAttackers);
+	}
+
+	for (ARGBEnemyCharacter* Enemy : AssignedEnemies) {
+		if (IsValid(Enemy) && (!Enemy->GetOwningArena() || Enemy->GetOwningArena() == this)) {
+			const FRGBEnemyArenaAttributes Attributes = CalculateEnemyAttributes(Enemy);
+			Enemy->ApplyArenaAttributes(Attributes);
+			Enemy->SetArenaMovementSpeedMultiplier(bUseArenaEnemyTuning ? Attributes.MovementSpeedMultiplier : MovementSpeedMultiplier);
+		}
+	}
+}
+
+FRGBEnemyArenaAttributes ARGBArenaControl::CalculateEnemyAttributes(const ARGBEnemyCharacter* Enemy) const
+{
+	FRGBEnemyArenaAttributes Result;
+	Result.bEnabled = bUseArenaEnemyTuning;
+	Result.Completion = GetCompletionFraction();
+	if (!bUseArenaEnemyTuning || !Enemy) {
+		return Result;
+	}
+
+	const float Progress = GetCompletionFraction();
+	const auto Positive = [Progress](const FRGBProgressValue& Value) { return FMath::Max(0.0f, Value.Evaluate(Progress)); };
+	switch (Enemy->GetEnemyMobilityType()) {
+	case ERGBEnemyMobilityType::Ground:
+		Result.MovementSpeedMultiplier = Positive(GroundEnemyTuning.PatrolSpeedMultiplier);
+		Result.ChaseSpeedMultiplier = Positive(GroundEnemyTuning.ChaseSpeedMultiplier);
+		Result.ChasePreference = FMath::Clamp(GroundEnemyTuning.ChasePreference.Evaluate(Progress), 0.0f, 1.0f);
+		Result.DetectionRange = Positive(GroundEnemyTuning.DetectionRange);
+		Result.AttackCooldownMultiplier = Positive(GroundEnemyTuning.AttackCooldownMultiplier);
+		Result.MinimumPatrolDirectionTime = FMath::Max(0.1f, GroundEnemyTuning.MinimumPatrolDirectionTime);
+		Result.MaximumPatrolDirectionTime = FMath::Max(Result.MinimumPatrolDirectionTime, GroundEnemyTuning.MaximumPatrolDirectionTime);
+		break;
+	case ERGBEnemyMobilityType::Teleporter:
+		Result.MinimumTeleportIdleTime = FMath::Max(0.1f, Positive(TeleporterEnemyTuning.MinimumIdleTime));
+		Result.MaximumTeleportIdleTime = FMath::Max(Result.MinimumTeleportIdleTime, Positive(TeleporterEnemyTuning.MaximumIdleTime));
+		Result.TeleportDangerRadius = Positive(TeleporterEnemyTuning.DangerRadius);
+		Result.TeleportProximityWeight = FMath::Clamp(TeleporterEnemyTuning.PlayerProximityWeight.Evaluate(Progress), 0.0f, 1.0f);
+		Result.TeleportHorizontalAttackRange = Positive(TeleporterEnemyTuning.HorizontalAttackRange);
+		Result.TeleportSameLevelHeightTolerance = FMath::Max(TeleporterEnemyTuning.SameLevelHeightTolerance, 0.0f);
+		Result.AttackCooldownMultiplier = Positive(TeleporterEnemyTuning.AttackCooldownMultiplier);
+		break;
+	case ERGBEnemyMobilityType::Flying:
+		Result.MovementSpeedMultiplier = Positive(FlyingEnemyTuning.SpeedMultiplier);
+		Result.FlightAccelerationMultiplier = Positive(FlyingEnemyTuning.AccelerationMultiplier);
+		Result.FlightTrackingWeight = Positive(FlyingEnemyTuning.PlayerTrackingWeight);
+		Result.FlightSeparationWeight = Positive(FlyingEnemyTuning.EnemySeparationWeight);
+		Result.FlightSeparationRadius = Positive(FlyingEnemyTuning.EnemySeparationRadius);
+		Result.FlightGeometryWeight = Positive(FlyingEnemyTuning.GeometryAvoidanceWeight);
+		Result.FlightProbeDistance = Positive(FlyingEnemyTuning.GeometryProbeDistance);
+		Result.AttackCooldownMultiplier = Positive(FlyingEnemyTuning.AttackCooldownMultiplier);
+		break;
+	}
+	return Result;
+}
+
 void ARGBArenaControl::RespawnEnemyFromRecord(int32 SpawnRecordIndex)
 {
 	EnemyRespawnTimers.Remove(SpawnRecordIndex);
+	ARGBEnemyCharacter* PendingEnemy = PendingRespawnEnemies.FindRef(SpawnRecordIndex);
 
 	if (bCompleted || !EnemySpawnRecord.IsValidIndex(SpawnRecordIndex)) {
+		if (IsValid(PendingEnemy)) {
+			PendingEnemy->DespawnForArenaCompletion();
+		}
+		PendingRespawnEnemies.Remove(SpawnRecordIndex);
+		return;
+	}
+
+	const FRGBArenaEnemySpawnRecord& Record = EnemySpawnRecord[SpawnRecordIndex];
+
+	if (IsValid(PendingEnemy)) {
+		PendingRespawnEnemies.Remove(SpawnRecordIndex);
+		PendingEnemy->RestoreForArenaRespawn(Record.SpawnTransform);
+		TrackEnemySpawnRecord(PendingEnemy, SpawnRecordIndex);
 		return;
 	}
 
 	UWorld* World = GetWorld();
-	const FRGBArenaEnemySpawnRecord& Record = EnemySpawnRecord[SpawnRecordIndex];
 
 	if (!IsValid(World) || !Record.EnemyClass) {
 		return;

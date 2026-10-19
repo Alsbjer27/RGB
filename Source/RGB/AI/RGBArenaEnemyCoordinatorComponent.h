@@ -20,6 +20,8 @@ public:
 	void UnregisterEnemy(ARGBEnemyCharacter* Enemy);
 	void ResetCoordination();
 	void SetPlayerTarget(ACharacter* NewPlayerTarget);
+	void ConfigureArenaPolicy(float DecisionInterval, float RoleCommitment, int32 MaximumAttackers);
+	void SetMaximumAttackers(int32 MaximumAttackers);
 
 	bool GetAssignment(const ARGBEnemyCharacter* Enemy, FRGBEnemyCoordinationAssignment& OutAssignment) const;
 	bool CanEnemyAttack(const ARGBEnemyCharacter* Enemy) const;
@@ -69,6 +71,9 @@ protected:
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "RGB|AI|Debug")
 	int32 ActiveTargetReservationCount = 0;
 
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "RGB|AI|Debug")
+	TArray<FString> CurrentAssignments;
+
 private:
 	struct FRegisteredEnemy
 	{
@@ -77,6 +82,8 @@ private:
 		FRGBEnemyCoordinationAssignment Assignment;
 		double CommitmentExpiresAt = 0.0;
 		bool bAttackPermissionAcquired = false;
+		bool bWantsChase = true;
+		double ChaseDecisionExpiresAt = 0.0;
 	};
 
 	struct FTargetReservation
@@ -100,4 +107,5 @@ private:
 	TArray<FRegisteredEnemy> RegisteredEnemies;
 	TArray<FTargetReservation> TargetReservations;
 	FTimerHandle AssignmentTimer;
+	bool bUseArenaPolicy = false;
 };

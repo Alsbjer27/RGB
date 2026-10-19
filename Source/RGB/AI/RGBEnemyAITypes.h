@@ -14,7 +14,8 @@ enum class ERGBEnemyActionState : uint8
 	AttackCooldown,
 	TeleportCharge,
 	AoEWindup,
-	Disabled
+	Disabled,
+	Attacking
 };
 
 UENUM(BlueprintType)
