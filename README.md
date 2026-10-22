@@ -13,8 +13,24 @@ TDDD23 game project developed with Unreal Engine 5.7.
 Generated Unreal folders such as `Binaries`, `Intermediate`, `Saved`, and
 `DerivedDataCache` are intentionally not committed.
 
-#
+RGB is a playable 2.5D action-puzzle platformer prototype. Colour rules connect
+movement, combat, platforms, enemies and arena puzzles. C++ owns gameplay;
+Blueprints configure assets, presentation and levels.
 
-RGB is an early-stage 2.5D action-puzzle platformer built in Unreal Engine 5.7. Its central design explores how colour-based rules can connect movement, combat, platforms, enemies, and arena-scale puzzles into one readable gameplay system.
+Implemented systems include arena-controlled ground, teleporter and flying AI,
+progress-dependent enemy pressure, colour combat, platform puzzles, checkpoints,
+respawn, menu/level fades and a HUD that follows the active arena.
 
-The project is currently in pre-production, with its design and technical architecture being established before gameplay implementation begins.
+The configured startup map is L_INTRO. L_MechanicsTest is the permanent mechanics
+test map; L_ChromaticFoundry is a separate three-arena level prototype.
+
+## Project reference
+
+- [CODEX_HANDOFF.txt](CODEX_HANDOFF.txt): current state, earlier sessions and verification limits.
+- [PROJECT_PLAN.md](PROJECT_PLAN.md): current delivery status and original milestone plan.
+- [ARCHITECTURE.md](ARCHITECTURE.md) and [DECISIONS.md](DECISIONS.md): ownership, design decisions and implementation boundaries.
+- [ENEMY_AI_SYSTEM_EXPLAINED.txt](ENEMY_AI_SYSTEM_EXPLAINED.txt): detailed AI explanation and presentation material.
+- [CHROMATIC_FOUNDRY_LEVEL.md](CHROMATIC_FOUNDRY_LEVEL.md): new level layout, authoring helpers and recorded checks.
+
+Last documentation reconciliation: 2026-10-22. Recorded builds and PIE checks
+are dated in these documents; this date does not imply a new test run.

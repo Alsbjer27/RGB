@@ -4,6 +4,15 @@ RGB ENEMY AI SYSTEM - COMPLETE TECHNICAL AND DESIGN EXPLANATION
 Document purpose
 ----------------
 
+Documentation reconciliation: 2026-10-22. The AI implementation description
+below remains dated October 17; no new AI behavior was added in this update.
+For the subsequent three-arena demo level and October 18 HUD fix, see
+CHROMATIC_FOUNDRY_LEVEL.md and the latest section of CODEX_HANDOFF.txt.
+The HUD now selects the player's current arena and displays zero between rooms;
+this does not reset the arena's true completion or its AI pressure profiles.
+The Unreal-MAP investigation and scope decision are already documented later
+in this file. It was considered for the presentation, not integrated into RGB.
+
 This document explains how the enemy AI currently implemented in RGB works. It
 is intended to be a reliable technical reference and a base for a later AI
 presentation. It describes the actual C++ implementation as of 2026-10-17,

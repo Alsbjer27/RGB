@@ -3,9 +3,14 @@
 ## Scope and review gate
 
 RGB is an Unreal Engine 5.7 C++ 2.5D action-puzzle platformer.
-Read PROJECT_PLAN.md, ARCHITECTURE.md, and DECISIONS.md before changing gameplay.
-The initial documentation is proposed for user review. Do not begin gameplay
-implementation until the user has reviewed it and authorized the next step.
+Read the latest section of CODEX_HANDOFF.txt, PROJECT_PLAN.md, ARCHITECTURE.md,
+and DECISIONS.md before changing gameplay. The initial documentation review gate
+was satisfied in earlier sessions and gameplay implementation was authorized.
+Continue within the user's current requested scope; do not repeat the initial
+review gate. Historical handoff entries and original architecture proposals are
+not current implementation claims. Check current source and asset configuration
+before relying on older notes. New design proposals still need user agreement
+when the user explicitly requests a review before implementation.
 
 ## C++ first
 

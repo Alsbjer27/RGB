@@ -1,5 +1,14 @@
 # AI coordination test checklist
 
+Documentation reconciliation: 2026-10-22. These are repeatable manual scenarios,
+not a claim that every item was rerun today. Use current arena pressure profiles
+when enabled: set Coordination Tuning > Maximum Attackers to a constant 1 at
+both progress endpoints when a scenario requires a single simultaneous attacker.
+Configure explicit per-arena Teleport Target Points for profile-enabled arenas.
+Foundry asset/PIE/movement/HUD results are recorded separately in
+CHROMATIC_FOUNDRY_LEVEL.md. Full combat balance and visual boundary checks remain
+human playtest work; do not infer their completion from the HUD regression.
+
 Use `L_MechanicsTest` or a small arena containing the normal `RGBArenaControl`
 and `RGBArenaCameraZone`. Keep the player and every enemy inside the camera
 zone so the arena owns their registration and respawn lifecycle.

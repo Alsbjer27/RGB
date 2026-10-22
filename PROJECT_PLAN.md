@@ -1,10 +1,48 @@
 # RGB project plan
 
-Status: initial documentation proposed for review; no gameplay implemented.
-Milestone order and game premise below come from the user. Detailed acceptance
-criteria and technical choices are proposed.
+Status: playable prototype with implemented C++ gameplay, updated 2026-10-22.
+The initial plan was reviewed and implementation authorized in earlier sessions.
+Read CODEX_HANDOFF.txt for the latest implementation and verification summary.
+The original milestone order is retained below as design history; it is not a
+claim that every original acceptance criterion has been met.
 
-## Repository baseline (2026-09-05)
+## Current implementation
+
+- Player movement in X/Z, camera zones and follow modes, jumping and air dash,
+  coloured projectiles, health, ability pickups, checkpoints and fading respawn.
+- Platform colour transitions, moving/rotating platforms, launch pads, colour
+  group activation, arena progress/completion and completion-controlled exits.
+- Arena-owned multi-agent coordination for ground, teleporter and flying
+  enemies, attack eligibility/budgets, exclusive enemy ownership, destination
+  reservations, configurable respawn and progress-dependent pressure profiles.
+- Instance settings retained through enemy elimination, respawn and arena reset.
+  Ground attack animation timing supplies the windup; no separate delay is added.
+- Menu selection and scripted character presentation, colour reset on return,
+  menu widget fade, level transitions and initial black hold/fade-in.
+- Shared HUD follows the current arena, displays zero outside arena bounds,
+  and removes older HUD instances when a replacement is created after respawn.
+- Separate L_ChromaticFoundry prototype: red/green/blue combat puzzle rooms,
+  connecting traversal, checkpoints and gated exits. Existing reference maps
+  were preserved during its creation. See CHROMATIC_FOUNDRY_LEVEL.md.
+
+Original proposed classes and mechanics are not all implemented. In particular,
+do not describe authored enemy platform navigation, strategic sabotage scoring,
+cannon-aware sacrifice planning or disk-backed saves as completed systems.
+Ability unlocks currently live in a GameInstance subsystem, not a SaveGame file.
+
+## Latest recorded verification and remaining work
+
+The latest recorded code build is RGBEditor Win64 Development with UE 5.7.1 on
+2026-10-18. The Foundry work recorded 78 asset checks, 47 PIE systems checks,
+15 PIE movement probes and 217 HUD regression assertions. These are scoped
+checks, not an uninterrupted human combat/traversal run or full milestone signoff.
+No build or PIE was rerun during this documentation-only update on October 22.
+Remaining assessment includes combat balance, natural traversal/controller feel,
+shuttle riding, final menu transition/fade and visual confirmation of teleporter
+damage/warning boundaries on different platforms. Keep L_MechanicsTest as the
+permanent mechanics regression map.
+
+## Historical repository baseline (2026-09-05; not current state)
 
 - RGB.uproject targets UE 5.7 and declares one RGB runtime module.
 - Source contains module startup, build rules, and Game/Editor targets only.
@@ -48,7 +86,7 @@ required platform-color configuration.
 5. Record changed behavior, verification results, and open issues. Move forward
    only with a buildable, verified increment; never label untested work complete.
 
-## Pending design choices
+## Original design questions (historical; consult DECISIONS.md for resolutions)
 
 - Before milestone 1: accept or adjust proposed X/Z movement, Y depth, fixed
   perspective side view; tune controls, movement, camera framing and smoothing.

@@ -3,7 +3,40 @@
 Status: accepted reference plan, updated as systems are implemented. Introduce
 classes incrementally in their milestone; keep a single RGB runtime module.
 
-## Ownership and classes
+Reconciled against current source on 2026-10-22. The table below retains original
+proposed names and must not be read as a list of implemented classes. Current
+implementation names and important differences are listed here first.
+
+## Current implementation map
+
+- Game/player: ARGBGameMode, ARGBPlayerController, ARGBPlayerCharacter,
+  URGBCharacterMovementComponent, URGBSideViewCameraComponent and dash visuals.
+- Camera: ARGBPlayerCameraManager and ARGBArenaCameraZone.
+- Platforms: URGBColorComponent, ARGBColorPlatform, ARGBJumpPad,
+  ARGBMovingPlatform, ARGBPlatformPath, URGBPathMovementComponent,
+  URGBRotationComponent and ARGBColorGroupActivator.
+- Combat is implemented through ARGBProjectile and enemy/player APIs; there is
+  no implemented URGBWeaponComponent or URGBColorTransferSubsystem in this tree.
+- Arena: ARGBArenaControl and ARGBArenaCompletionActivator. The current puzzle
+  counts assigned platforms matching one required colour, rather than the
+  originally proposed per-platform stable-ID target configuration.
+- AI: ARGBEnemyCharacter, ARGBTeleporterEnemyCharacter,
+  ARGBFlyingEnemyCharacter, URGBArenaEnemyCoordinatorComponent and tuning structs
+  in RGBArenaEnemyTuning.h. Do not assume a separate AIController, authored
+  platform navigation component or strategic sabotage evaluator exists.
+- Progression: ARGBAbilityPickup, URGBAbilityUnlockSubsytem (source spelling),
+  ARGBCheckpoint and ARGBLevelTransitionArea. Unlocks are session state in a
+  GameInstance subsystem; no disk-backed SaveGame system is implemented here.
+- Menu: ARGBMainMenuDirector and ARGBMainMenuPlayerController.
+- HUD: URGBHUDWidget plus the existing WBP_RGBHUD_Prototype presentation asset.
+- Testing: arena tuning automation, an editor-only HUD migration path and
+  Scripts/Editor validation/PIE helpers. Retain L_MechanicsTest as the permanent
+  mechanics fixture; L_ChromaticFoundry supplies separate multi-arena checks.
+
+No cannon runtime class is present. Original cannon-aware AI, stable-ID puzzle
+snapshots and authored enemy traversal below remain future proposals.
+
+## Original proposed ownership and classes (historical planning table)
 
 | Milestone | Proposed class/type | Responsibility |
 |---|---|---|

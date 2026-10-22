@@ -1,5 +1,192 @@
 RGB - CROSS-PC CODEX HANDOFF
-Last updated: 2026-10-07 (Europe/Stockholm)
+Last updated: 2026-10-22 (Europe/Stockholm)
+
+CURRENT HANDOFF - OCTOBER 22 (PROJECT RECONCILIATION THROUGH THE OCTOBER 18 HUD FIX)
+===============================================================================
+
+READ THIS SECTION FIRST
+- This section supersedes conflicting implementation/status claims in older
+  entries below. Older entries are preserved as history, including animation,
+  Blender, materials, lighting and editor work not repeated in this summary.
+- The initial documentation gate was satisfied and gameplay work authorized.
+  Continue the current user request rather than restarting the initial plan.
+- October 22 was a documentation-only reconciliation of source, project config,
+  existing reports and this conversation. No new build, PIE run, asset inspection
+  inside Unreal, commit or push was performed for this update.
+- Checkout inspected today: main, HEAD 17a3643 (Updates); git status was clean
+  before this documentation update. This is a dated snapshot, not a permanent
+  instruction about the branch or permission to discard future changes.
+- Project: UE 5.7, last tested installed engine 5.7.1. C++ owns gameplay rules.
+  Blueprint assets compose levels, assign assets and present native state/events.
+
+DOCUMENT MAP AND SOURCE OF TRUTH
+- PROJECT_PLAN.md: current status plus the original historical milestones.
+- ARCHITECTURE.md: current ownership summary and explicitly labelled proposals.
+- DECISIONS.md: accepted changes; D015 arena profiles, D016 teleporter damage,
+  D017 Foundry level and D018 HUD arena switching are especially relevant.
+- ENEMY_AI_SYSTEM_EXPLAINED.txt: detailed AI implementation and presentation text.
+- AI_COORDINATION_TEST_CHECKLIST.md: repeatable manual coordination scenarios.
+- CHROMATIC_FOUNDRY_LEVEL.md: level design, editor helpers, actual test scope.
+- Read actual Source/RGB and configured Blueprint/placed-instance values before
+  changing behavior. A proposed class name in old notes is not proof it exists.
+
+PLAYER, CAMERA, PROGRESSION AND PRESENTATION
+- Gameplay is on world X/Z with Y constrained. CharacterMovementComponent owns
+  player locomotion. Movement/jump/air-dash tuning may be overridden in the
+  player Blueprint; inspect its actual defaults before calculating reachability.
+- Colour projectiles, matching-enemy elimination, platform colour transfer,
+  health, launch pads, moving/rotating platforms and activators are implemented.
+- Camera zones support Fixed, FollowPlayerZ and FollowPlayerXZ. Camera framing
+  and Y depth are authored per zone; native zone actors work without BP subclasses.
+- ARGBCheckpoint owns activation, a respawn transform and a fall recovery trigger.
+  ARGBLevelTransitionArea exposes destination, fade-out and black-hold settings.
+  PlayerController provides initial black hold and fade-in after level entry.
+- URGBAbilityUnlockSubsytem (the spelling in source) is a GameInstance subsystem
+  for Dash and Red/Green/Blue weapon unlocks. Unlocks survive pawn replacement;
+  ARGBGameMode also restores the selected weapon colour after respawn. This is
+  session state, not proof of save-to-disk persistence.
+- IMPORTANT: falling/checkpoint recovery respawns without the global puzzle
+  reset. Lethal health damage calls RestartMechanicsTest, respawning at the active
+  checkpoint and resetting all arenas/platforms in the current world. Do not
+  silently change this to a local-arena-only reset.
+- Main menu has Start/Settings/Credits/Exit selection, native director/controller
+  events, scripted character movement and return-colour reset. Presentation
+  widgets respond to events. Menu text fade and level-transition fades were
+  iterated and confirmed by the user. Gameplay HUD is suppressed in the menu.
+- Teleport preparation visuals use a rising charge effect and mesh implosion
+  presentation. The user approved the revised particle look and later removed
+  the separate departure burst they disliked. Do not restore that discarded
+  placeholder/burst because an October 6 entry below suggests adding one.
+- Lighting/post-process, imported grass, character animations and materials have
+  also been tuned. Exact current saved editor values were not re-audited today;
+  preserve those assets and read their existing task notes/folder READMEs.
+
+ARENA CONTROL AND MULTI-AGENT AI
+- ARGBArenaControl is the actual native arena class, not the older proposed
+  ARGBArenaController. It owns assigned colour platforms, required colour,
+  completion, camera-zone link, enemies, respawn and optional AI pressure tuning.
+- URGBArenaEnemyCoordinatorComponent makes timer-driven group assignments,
+  ranks eligible threats by player distance/commitment, limits simultaneous
+  attackers across variants and reserves special destinations. Each enemy
+  implements its local movement and attack execution. This is C++ coordination,
+  not Behavior Trees, EQS, NavMesh or an external machine-learning runtime.
+- Enemies remain idle before the player enters their assigned camera zone.
+  Flying enemies track the player's live X/Z position, stay inside their arena
+  bounds and use collision sweeps plus geometry/enemy avoidance and separation.
+- Ground enemies patrol, chase visible players and attack with animation-based
+  damage timing. The user removed the separate preparatory windup. AttackHitDelay
+  remains the authored hit moment; progress may scale cooldown, not that delay.
+- Enable Use Arena Enemy Tuning on each arena to use per-type pressure profiles.
+  FRGBProgressValue has AtNoProgress, NearCompletion and an optional normalized
+  response curve. Ground patrol/chase, teleporter idle/destination/range, flying
+  speed/acceleration/avoidance and attacker budget can scale with true completion.
+  These profiles replace the legacy common speed multiplier while enabled.
+- Enemy respawn delay has a separate optional completion-based scaling toggle.
+  Higher completion can shorten delays. Completion cancels pending respawns.
+- Arena-managed enemies retain configured inactive runtime instances through
+  elimination/reset/completion and restore them for respawn. Per-instance scale,
+  colour randomization, teleport configuration and flying tuning must survive.
+  Enemy ownership is exclusive to one arena; do not register one actor twice.
+- Teleporters choose randomized idle durations, use reservations/occupancy checks
+  to avoid stacking, and weight destinations toward player danger/proximity.
+  For profile-enabled arenas, configure that arena's explicit Teleport Target
+  Points array with points inside its camera zone. Legacy tag behavior remains
+  for older setups; do not pool two arenas' destinations indiscriminately.
+- IMPORTANT teleporter clarification: first check same combat level using
+  capsule-feet height tolerance (default 60 cm). Once eligible, trigger range
+  and coordinator ranking use X distance. Players on separate platforms above
+  or below must not trigger attacks merely because X is close. Damage rechecks
+  eligibility and the authored X/Z AoERadius; it is not an infinite vertical strip.
+- Player damage diagnostics retain attacker/source and separation. Optional
+  rgb.DebugPlayerDamage markers help find invisible/unexpected damage sources.
+  Hidden/inactive enemies must not damage the player.
+- Authored enemy platform traversal, strategic sabotage scoring and cannon-aware
+  sacrifice planning remain proposals, not completed features to claim in a demo.
+- Unreal-MAP (binary-husky/unreal-map) was investigated for the AI presentation,
+  then rejected for this project's current scope and existing development stage.
+  Its external training workflow was NOT adopted or installed. The AI explanation
+  file already includes presentation-ready rationale for that decision.
+
+CHROMATIC FOUNDRY LEVEL
+- Separate asset: /Game/RGB/Maps/L_ChromaticFoundry. Three successive rooms:
+  Crimson Press (red), Verdant Relay (green), Azure Core (blue).
+- Includes 18 puzzle pads, 10 enemies, 7 checkpoints, 19 launch/boost pads,
+  completion-controlled one-way shutters, a rising gantry, shuttle connector,
+  initial ability pickups and a departure transition to L_MainMenu.
+- Each arena has its own camera, control, enemies and explicit teleport points.
+  Native camera-zone instances are intentional. Controls use BP_RGBArenaControl.
+- Existing L_INTRO and L_MapLayout were preserved during level creation and HUD
+  repair. New environment materials are under Content/RGB/Levels/ChromaticFoundry.
+- Config still selects L_INTRO as editor and game startup map with BP_RGBGameMode.
+  The Foundry was not made the default map. L_MechanicsTest remains permanent.
+- Actual player Blueprint jump velocity used for traversal probes was 1120 cm/s,
+  rather than the different native constructor default. Tall routes use launch
+  pads; do not retune global player movement to make the prototype reachable.
+- Scripts/Editor/create_chromatic_foundry.py refuses to overwrite an existing
+  map. refine_chromatic_foundry.py is an authoring correction script that restores
+  placements: DO NOT rerun over later user edits. Validation and PIE helpers
+  inspect/test without saving gameplay changes to the map.
+
+LATEST FIX - HUD FOLLOWING THE ACTIVE ARENA
+- The old WBP_RGBHUD_Prototype bound once to GetActorOfClass and therefore only
+  displayed the first arena's progress. The shared widget now derives from
+  URGBHUDWidget (Source/RGB/Player/RGBHUDWidget.h/.cpp).
+- The native presenter caches arena controls, registers newly spawned controls,
+  uses its owning pawn and configured camera bounds to select the current arena,
+  and reads that control's completion fraction. No world-wide per-frame search.
+- It smooths the liquid material's FillAmount inside a room, switches to that
+  room's stored progress on entry and immediately displays zero outside arenas.
+  This changes HUD presentation, not authoritative puzzle/AI completion.
+- The player Blueprint creates another HUD on respawn. NativeConstruct retires
+  older viewport HUDs for the same owning player, preventing stacked displays.
+- Blueprint layout and health presentation remain. UMG is now a runtime module
+  dependency; the arena exposes a read-only camera-zone getter for the presenter.
+- RGBUpgradeHUDCommandlet is a one-time, guarded Unreal graph/asset migration.
+  The saved HUD asset is ALREADY migrated. Do not rerun it as routine setup or
+  hand-edit the .uasset. Its editor dependencies are conditional in RGB.Build.cs.
+
+VERIFICATION RECORD - DATED, NOT A FRESH OCTOBER 22 TEST RUN
+- October 18: RGBEditor Win64 Development built with installed UE 5.7.1:
+  Engine/Build/BatchFiles/Build.bat RGBEditor Win64 Development <RGB.uproject>
+  -WaitMutex -NoUBA -NoHotReloadFromIDE (use quoted absolute paths on Windows).
+- Foundry saved-asset validation: 78 checks passed.
+- Foundry real PIE systems test: 47 checks passed.
+- Foundry real PIE movement probes: 15 passed.
+- Final HUD real PIE regression: 217 assertions passed, finished=true. Checked
+  material fill during real platform landings in all three arenas, completion,
+  departure to zero, completed-room reentry, single HUD after lethal respawn and
+  correct reset progress. Helper: Scripts/Editor/check_foundry_hud.py.
+- HUD test temporarily suppresses enemy damage and boost-pad collision in PIE
+  to isolate landings. It restores the editor background CPU throttle setting.
+  These are scoped automated checks, NOT full combat/traversal balance testing.
+- Reports/logs live under Saved/LevelDesign and Saved/Logs and are local generated
+  outputs, not required version-controlled files. The HUD JSON still exists and
+  records all 217 passes at this documentation update. Earlier AI automation
+  results and manual scenarios are described in their dedicated documentation.
+- Remaining human checks: full combat run, difficulty tuning, natural keyboard/
+  controller traversal, shuttle riding, final menu transition/fade and visual
+  teleporter attack boundaries. A Foundry check does not automatically sign off
+  every original milestone or refresh all L_MechanicsTest regression scenarios.
+
+EDITOR/WORKFLOW CAUTIONS FOR THE NEXT SESSION
+- Inspect current Git status and preserve unrelated changes; never commit/reset/
+  rewrite history without authorization. Follow repository rules for PRs when
+  pushing; earlier main pushes required a pull request. Do not assume rules were
+  rechecked today. Use codex/ for a new development branch when needed.
+- Do not hand-edit binary Unreal assets. Use editor APIs/Unreal Python or the UI.
+  PythonScriptPlugin and EditorScriptingUtilities were enabled by command line
+  for authoring helpers, not installed as new gameplay dependencies.
+- Close the correct project editor before a normal non-hot-reload build; an open
+  editor locks UnrealEditor-RGB.dll. Check dirty assets before closing it.
+- Unreal Rotator construction should use pitch/yaw/roll keywords. Copy borrowed
+  settings structs before unloading their source map. Guard asynchronous Slate
+  test callbacks against reentrancy and unregister them when finished.
+- Generated Binaries/Intermediate/Saved/DDC and solution files stay out of Git.
+  Source, Config, documentation and required .uasset/.umap assets belong in Git
+  with existing LFS rules. Preserve Blender source and historical animation work.
+
+OLDER SESSION HISTORY (PRESERVED; CURRENT SUMMARY ABOVE TAKES PRECEDENCE)
+===============================================================================
 
 CURRENT HANDOFF - OCTOBER 7 (PLAYER2 AIR DASH ANIMATION)
 
