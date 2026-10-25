@@ -76,6 +76,18 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Flying|Visuals", meta = (EditCondition = "bOrientVisualToFlightDirection", ClampMin = "0.0", Units = "deg/s"))
 	float VisualRotationSpeed = 540.0f;
 
+	// Spins only FlyingBody around its own pivot. The capsule and actor rotation used by movement, sweeps and avoidance are untouched.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Flying|Spin")
+	bool bSpinBody = true;
+
+	// Degrees per second around the body's local pitch, yaw and roll axes. Several non-zero axes give a tumble.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Flying|Spin", meta = (EditCondition = "bSpinBody"))
+	FRotator SpinRate = FRotator(70.0f, 110.0f, 45.0f);
+
+	// Spin rate multiplier at Maximum Flight Speed. Hovering, idle and attacking (no flight velocity) use the base rate.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Flying|Spin", meta = (EditCondition = "bSpinBody", ClampMin = "1.0"))
+	float SpinMultiplierAtMaximumSpeed = 2.5f;
+
 private:
 	void RefreshPlayerTarget();
 	void UpdateFlight(float DeltaTime);
@@ -84,6 +96,7 @@ private:
 	float MeasureObstacleClearance(const FVector& Direction, FHitResult* OutHit = nullptr) const;
 	FVector ConstrainMoveDeltaToArena(const FVector& StartLocation, const FVector& DesiredDelta) const;
 	void UpdateVisualFacing(const FVector& FlightDirection, float DeltaTime);
+	void UpdateBodySpin(float DeltaTime);
 
 	UPROPERTY(Transient)
 	TWeakObjectPtr<ACharacter> FlightTargetPlayer;

@@ -247,3 +247,41 @@ graph APIs and compiler, preserving health graph nodes and refusing an unexpecte
 layout. A newly constructed HUD removes older viewport HUDs for its owning player;
 the respawn check exposed that the character creates a new HUD each time.
 No level assets need to change for this fix.
+
+## D019 - Elimination presentation only on combat kills (2026-10-24)
+
+Status: Accepted by the user and implemented; user-verified in PIE.
+
+Enemy elimination VFX and sound are triggered from the lethal branch of
+`RecieveColorHit` only, before `OnEnemyEliminated` lets the arena hide or
+retain the enemy. Arena completion, lethal/arena reset and respawn paths stay
+silent. Effects are world-owned (not attached), so retained inactive enemy
+instances need no extra restoration. One Niagara system for all enemy types
+receives the enemy colour and a scaled capsule radius through User parameters.
+Elimination and jump-pad sounds are 2D: with a 20000 cm camera arm, attenuated
+3D sound would need an audio listener override, which the user declined.
+
+## D020 - Ability instructions pause the game (2026-10-24)
+
+Status: Accepted by the user and implemented; user reported it working in PIE.
+
+A real new unlock (`OnAbilityUnlocked`) queues an instruction in the player
+controller, which pauses the whole game and adds a paused-only input context
+until A or Space is released. Pausing everything, rather than only the player's
+movement, prevents enemies hitting a frozen player and mid-air hovering.
+Weapon wording depends on the number of weapons unlocked at that moment. The
+HUD only presents: it shows one of four script-generated PNG panels in a
+runtime-created image, avoiding hand-built UMG layout. Already-collected and
+duplicate pickups give no sound or prompt, and nothing is re-shown on respawn.
+
+## D021 - Flying enemy visual body spins independently of collision (2026-10-24)
+
+Status: Accepted by the user and implemented; user accepted the result in PIE.
+
+The flying enemy uses a script-generated spiked icosphere (slot 0 base, slot 1
+emission) on its existing collision-free `FlyingBody`. A tumble spin rotates
+only that component; its rate rises with current flight speed and has no idle or
+attack special cases. The 48 cm capsule stays the collision, projectile and
+movement shape, so a larger visual scale is presentation only. Contact feel is
+tuned through the flyer Blueprint's attack range values (stop distance and hit
+padding) rather than by shrinking collision.

@@ -256,6 +256,7 @@ void ARGBPlayerCharacter::Landed(const FHitResult& Hit)
 		JumpSourcePlatform.Reset();
 		StopJumping();
 
+		JumpPad->PlayLaunchFeedback(GetActorLocation());
 		LaunchCharacter(FVector(0.0f, 0.0f, LaunchSpeed), false, true);
 
 		return;

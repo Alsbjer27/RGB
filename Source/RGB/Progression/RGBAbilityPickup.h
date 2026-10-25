@@ -11,6 +11,7 @@ class USphereComponent;
 class UStaticMeshComponent;
 class UPrimitiveComponent;
 class ARGBPlayerCharacter;
+class USoundBase;
 
 UCLASS()
 class RGB_API ARGBAbilityPickup : public AActor
@@ -33,6 +34,9 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Pickup")
 	ERGBPlayerAbility GrantedAbility = ERGBPlayerAbility::Dash;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Pickup")
+	TObjectPtr<USoundBase> PickupSound;
 
 private:
 	UFUNCTION()

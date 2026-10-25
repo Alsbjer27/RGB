@@ -5,6 +5,9 @@
 
 #include "Components/StaticMeshComponent.h"
 
+#include "Kismet/GameplayStatics.h"
+#include "Sound/SoundBase.h"
+
 // Sets default values
 ARGBJumpPad::ARGBJumpPad()
 {
@@ -18,5 +21,13 @@ ARGBJumpPad::ARGBJumpPad()
 	PadMesh->SetSimulatePhysics(false);
 	PadMesh->SetGenerateOverlapEvents(false);
 }
+
+void ARGBJumpPad::PlayLaunchFeedback(const FVector& Loaction) const
+{
+	if (IsValid(LaunchSound)) {
+		UGameplayStatics::PlaySoundAtLocation(this, LaunchSound, Loaction);
+	}
+}
+
 
 

@@ -25,6 +25,11 @@
 #include "../Player/RGBPlayerCharacter.h"
 #include "../Arena/RGBArenaControl.h"
 
+#include "NiagaraComponent.h"
+#include "NiagaraFunctionLibrary.h"
+#include "NiagaraSystem.h"
+#include "Sound/SoundBase.h"
+
 // Sets default values
 ARGBEnemyCharacter::ARGBEnemyCharacter()
 {
@@ -199,6 +204,7 @@ bool ARGBEnemyCharacter::RecieveColorHit(ERGBColor ProjectileColor)
 	ConsumeMovementInputVector();
 
 	TransferColorSupportingPlatform();
+	PlayEliminationPresentation();
 	OnEnemyEliminated.Broadcast(this);
 
 	if (!bArenaRespawnManaged) {
@@ -879,3 +885,45 @@ void ARGBEnemyCharacter::TransferColorSupportingPlatform()
 	PlatformColor->SetColor(ColorComponent->GetCurrentColor());
 }
 
+void ARGBEnemyCharacter::PlayEliminationPresentation() const
+{
+	const FVector EliminationLocation = GetActorLocation();
+
+	if (IsValid(EliminationEffect)) {
+		FLinearColor EffectColor = FLinearColor::White;
+
+		if (IsValid(ColorComponent)) {
+			switch (ColorComponent->GetCurrentColor()) {
+			case ERGBColor::Red:
+				EffectColor = RedEliminationColor;
+				break;
+			case ERGBColor::Green:
+				EffectColor = GreenEliminationColor;
+				break;
+			case ERGBColor::Blue:
+				EffectColor = BlueEliminationColor;
+				break;
+			default:
+				break;
+			}
+		}
+
+		const UCapsuleComponent* Capsule = GetCapsuleComponent();
+		const float BodyRadius = IsValid(Capsule) ? FMath::Max(Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight()) : 50.0f;
+
+		if (UNiagaraComponent* Effect = UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, EliminationEffect, EliminationLocation)) {
+			Effect->SetVariableLinearColor(EliminationColorParameterName, EffectColor);
+			Effect->SetVariableFloat(EliminationRadiusParameterName, BodyRadius * EliminationRadiusScale);
+		}
+	}
+	else {
+		UE_LOG(LogTemp, Warning, TEXT("%s has no EliminationEffect assigned."), *GetName());
+	}
+
+	if (IsValid(EliminationSound)) {
+		UGameplayStatics::PlaySoundAtLocation(this, EliminationSound, EliminationLocation);
+	}
+	else {
+		UE_LOG(LogTemp, Warning, TEXT("%s has no EliminationSound assigned."), *GetName());
+	}
+}

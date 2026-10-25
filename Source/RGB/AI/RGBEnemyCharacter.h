@@ -15,6 +15,8 @@ class ARGBEnemyCharacter;
 class ARGBArenaCameraZone;
 class URGBArenaEnemyCoordinatorComponent;
 class ARGBArenaControl;
+class UNiagaraSystem;
+class USoundBase;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FRGBEnemyEliminatedSignature, ARGBEnemyCharacter*, EliminatedEnemy);
 
@@ -128,6 +130,31 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Health")
 	int32 MaxHealth = 1;
 
+
+	UPROPERTY(EditDefaultsOnly, Category = "RGB|Elimination")
+	TObjectPtr<UNiagaraSystem> EliminationEffect;
+
+	UPROPERTY(EditDefaultsOnly, Category = "RGB|Elimination")
+	TObjectPtr<USoundBase> EliminationSound;
+
+	UPROPERTY(EditDefaultsOnly, Category = "RGB|Elimination")
+	FLinearColor RedEliminationColor = FLinearColor(1.0f, 0.02f, 0.01f, 1.0f);
+
+	UPROPERTY(EditDefaultsOnly, Category = "RGB|Elimination")
+	FLinearColor GreenEliminationColor = FLinearColor(0.02f, 1.0f, 0.05f, 1.0f);
+
+	UPROPERTY(EditDefaultsOnly, Category = "RGB|Elimination")
+	FLinearColor BlueEliminationColor = FLinearColor(0.02f, 0.02f, 1.0f, 1.0f);
+
+	UPROPERTY(EditDefaultsOnly, Category = "RGB|Elimination")
+	FName EliminationColorParameterName = TEXT("User.EliminationColor");
+
+	UPROPERTY(EditDefaultsOnly, Category = "RGB|Elimination")
+	FName EliminationRadiusParameterName = TEXT("User.EliminationRadius");
+
+	UPROPERTY(EditDefaultsOnly, Category = "RGB|Elimination", meta = (ClampMin = "0.1"))
+	float EliminationRadiusScale = 1.25f;
+
 	virtual bool IsPlayerWithinAttackRange(const ACharacter* Player) const;
 	virtual void HandleArenaAIActiveChanged(bool bNewActive);
 	virtual void HandleArenaMovementSpeedMultiplierChanged(float NewMultiplier);
@@ -208,4 +235,6 @@ private:
 	bool bEliminated = false;
 
 	void TransferColorSupportingPlatform();
+
+	void PlayEliminationPresentation() const;
 };

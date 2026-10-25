@@ -93,6 +93,7 @@ void ARGBFlyingEnemyCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
 void ARGBFlyingEnemyCharacter::Tick(float DeltaTime)
 {
 	ACharacter::Tick(DeltaTime);
+	UpdateBodySpin(DeltaTime);
 	if (!IsArenaAIActive()) {
 		return;
 	}
@@ -427,4 +428,17 @@ void ARGBFlyingEnemyCharacter::UpdateVisualFacing(const FVector& FlightDirection
 	const float DesiredYaw = FlightDirection.X >= 0.0f ? 0.0f : 180.0f;
 	const FRotator DesiredRotation(0.0f, DesiredYaw, 0.0f);
 	SetActorRotation(FMath::RInterpConstantTo(GetActorRotation(), DesiredRotation, DeltaTime, FMath::Max(VisualRotationSpeed, 0.0f)));
+}
+
+void ARGBFlyingEnemyCharacter::UpdateBodySpin(float DeltaTime)
+{
+	if (!bSpinBody || !IsValid(FlyingBody)) {
+		return;
+	}
+
+	// Read-only use of the current flight velocity; arena speed scaling above the base maximum spins faster still.
+	const float BaseMaximumSpeed = FMath::Max(MaximumFlightSpeed, 1.0f);
+	const float SpeedRatio = FMath::Clamp(FlightVelocity.Size() / BaseMaximumSpeed, 0.0f, 2.0f);
+	const float SpinMultiplier = 1.0f + SpeedRatio * (FMath::Max(SpinMultiplierAtMaximumSpeed, 1.0f) - 1.0f);
+	FlyingBody->AddLocalRotation(SpinRate * (DeltaTime * SpinMultiplier));
 }

@@ -5,6 +5,8 @@
 
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Kismet/GameplayStatics.h"
+#include "Sound/SoundBase.h"
 
 #include "../Player/RGBPlayerCharacter.h"
 
@@ -56,6 +58,10 @@ void ARGBAbilityPickup::HandlePickupOverlap(UPrimitiveComponent* OverlappedCompo
 		return;
 	}
 
-	Player->GrantAbility(GrantedAbility);
+	// GrantAbility fails for an ability that is already unlocked, so duplicates stay silent.
+	if (Player->GrantAbility(GrantedAbility) && IsValid(PickupSound)) {
+		// 2D UI sound keeps playing while the ability instructions pause the game.
+		UGameplayStatics::PlaySound2D(this, PickupSound);
+	}
 	Destroy();
 }

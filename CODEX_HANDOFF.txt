@@ -1,5 +1,162 @@
 RGB - CROSS-PC CODEX HANDOFF
-Last updated: 2026-10-22 (Europe/Stockholm)
+Last updated: 2026-10-24 (Europe/Stockholm)
+
+CURRENT HANDOFF - OCTOBER 24 (MVP FEATURES 1-3: ELIMINATION VFX/SOUND, JUMP PAD SOUND, PICKUP FEEDBACK, FLYING ENEMY LOOK)
+===============================================================================
+
+READ THIS FIRST, THEN THE OCTOBER 22 SECTION BELOW (STILL VALID OTHERWISE)
+- Branch Testing/New-level. Nothing committed or pushed. Unrelated pre-existing
+  work (L_THREE map, level-three scripts, MI_BlockOut_Metal) was left untouched.
+- Working style agreed with the user: feature 1 C++ was typed by the user from
+  exact snippets; from feature 2 the user authorised the assistant to edit C++
+  directly and build (editor must be closed; Live Coding is off). Editor work is
+  given as click-by-click steps; the user prefers to avoid manual UMG designer
+  work. One feature at a time; ask before starting the next feature.
+
+MVP FEATURE LIST (USER ORDER; ONE AT A TIME)
+1. Enemy elimination VFX + death sound - DONE and user-verified (below).
+2. Power-up pickup sound + HUD ability instructions - DONE, user reported it
+   works (below, D020).
+3. Flying enemy new mesh + visual-only spin - DONE, user reported happy (below,
+   D021).
+4. Background music per scene (menu, L_INTRO, Foundry, maybe per arena),
+   behaviour across transitions/fades. NEXT.
+5. Finish main menu + Settings AI difficulty presets. Propose mapping onto
+   FRGBProgressValue profiles, attacker budget, respawn delay, legacy arenas,
+   and session vs saved; ASK THE USER before deciding.
+
+FEATURE 1 - IMPLEMENTED (D019)
+- ARGBEnemyCharacter::PlayEliminationPresentation() is called only from the
+  lethal branch of RecieveColorHit, after TransferColorSupportingPlatform and
+  BEFORE OnEnemyEliminated.Broadcast (the arena hides the enemy inside that
+  broadcast). Completion despawn, lethal/arena reset and respawn paths
+  (PrepareForArenaRespawn, DespawnForArenaCompletion, RestoreForArenaRespawn)
+  do not call it. Arena code was not changed.
+- Niagara system and sound are spawned world-owned at the actor location
+  (SpawnSystemAtLocation / PlaySoundAtLocation), never attached, so hiding or
+  destroying the enemy does not cut them off and no state needs restoring.
+- Class-default settings, category RGB|Elimination: EliminationEffect,
+  EliminationSound, Red/Green/BlueEliminationColor, EliminationColorParameterName
+  (User.EliminationColor), EliminationRadiusParameterName
+  (User.EliminationRadius), EliminationRadiusScale (default 1.25). Radius sent
+  = max(scaled capsule radius, scaled half height) * scale, so per-instance
+  actor scale enlarges the burst. Missing assets log a warning per kill.
+- Assets: Content/RGB/VFX/Enemies/NS_EnemyElimination (Simple Sprite Burst
+  base, Loop Once, User colour/radius, sphere shape location, outward velocity,
+  drag, Scale RGB ~8 for bloom). Content/RGB/Audio/Combat/SC_EnemyDeath (Random
+  node, without replacement, over Content/RGB/Assets/Audio/EnemyElimination/
+  EnemyElim1-5). Same effect and cue assigned in BP_RGBEnemyHeavy,
+  BP_RGBEnemyTeleporter and BP_RGBFlyingEnemy.
+- Sound is intentionally 2D (no attenuation). The side-view camera arm is
+  20000 cm, so a 3D sound heard from the default camera listener would be near
+  silent and barely panned; the user chose 2D instead of a listener override.
+- Not added (user chose to skip): Blueprint OnCombatEliminated event and an
+  automation test for presentation gating. Non-lethal hits on MaxHealth > 1
+  enemies still have no feedback.
+
+SMALL EXTRA (USER REQUEST) - JUMP PAD LAUNCH SOUND
+- ARGBJumpPad::LaunchSound (EditAnywhere, RGB|JumpPad) and
+  PlayLaunchFeedback(Location); ARGBPlayerCharacter::Landed calls it just
+  before LaunchCharacter. 2D, no warning when unset (valid configuration).
+  Landed already returns before LandingSound on pads, so the sounds don't stack.
+- Asset Content/RGB/Assets/Audio/Platforms/JumpPad assigned in the pad
+  Blueprints (BP_RGBJumpPad / BP_RGBJumpPad_Visual both modified).
+
+VERIFICATION (USER-RUN, 2026-10-24; NOT INDEPENDENTLY RE-RUN BY THE ASSISTANT)
+- User built RGBEditor (Win64 Development) after each C++ step; builds succeeded.
+- PIE, user report: before asset assignment, missing-asset warnings appeared
+  only on combat kills. After assignment: tinted burst covers each enemy type
+  and plays with the death sound once per kill; respawned enemies return
+  normal; arena completion and lethal-damage reset show no bursts or sounds;
+  no missing-asset warnings. Jump pad sound reported working.
+- Pending: credits note for EnemyElim1-5 and JumpPad sound sources (user to
+  supply file origins/authors).
+
+FEATURE 2 - IMPLEMENTED (D020)
+- Trigger: only a real new unlock. ARGBAbilityPickup plays PickupSound (2D UI
+  sound via PlaySound2D, so it is audible while paused) only when
+  ARGBPlayerCharacter::GrantAbility returns true. Pickups destroyed in
+  BeginPlay because the ability is already unlocked, and duplicate pickups
+  (GrantAbility false), stay silent with no prompt.
+- ARGBPlayerController subscribes to URGBAbilityUnlockSubsytem::OnAbilityUnlocked
+  and owns a prompt queue. Instruction type is fixed at unlock time: Dash, or
+  FirstWeapon / WeaponSwitching / AdditionalWeapon by number of weapons
+  unlocked. While a prompt is open the WHOLE GAME IS PAUSED (user asked to
+  pause player movement; full pause chosen so enemies cannot attack a frozen
+  player and mid-air pickups do not hover - user accepted in testing).
+- Close: IA_DissmissInstruction (asset spelling; Trigger When Paused on) in
+  ICM_AbilityInstruction (Space, Gamepad Face Button Bottom), added at priority
+  10 only while a prompt is open. Bound on Completed (release) so the held key
+  does not jump after unpausing. MinimumAbilityInstructionTime 0.6 s (real
+  time). Prompts collected during the level-entry black hold wait for
+  FinishInitialFadeIn. Missing input assets log a warning and never pause.
+- No repeat prompt after death: unlocks are never re-granted on respawn. A HUD
+  recreated while a prompt is open queries GetActiveAbilityInstruction.
+- URGBHUDWidget binds OnAbilityInstructionChanged in NativeConstruct, unbinds in
+  NativeDestruct, and shows one of four UTexture2D images (Class Defaults,
+  RGB|HUD|Ability Instructions; AbilityInstructionImageScale). With no designer
+  Image_AbilityInstruction it creates a UImage at runtime in the outermost
+  Canvas Panel or Overlay (the HUD root is NOT a Canvas Panel; first attempt
+  failed for that reason). Optional BlueprintImplementableEvents
+  OnAbilityInstructionShown/Hidden exist for animation; none implemented.
+- Images: Scripts/Tools/generate_ability_instruction_images.py (Pillow, Segoe
+  UI) renders Content/RGB/UI/HUD/AbilityInstructions/T_AbilityInstruction_*.png
+  (960x420; Dash, FirstWeapon, WeaponSwitching, AdditionalWeapon). Bindings in
+  the images: Dash Left Shift/B (air only, once per jump), Fire P/X, previous
+  colour O/LB, next colour Å/RB, continue A/Space, jump A/Space. Imported as
+  Uncompressed (RGBA8) - UE 5.7 list has no UserInterface2D entry - Texture
+  Group UI. Re-run the script and re-import when wording or bindings change.
+  Weapon images do not name the colour.
+- Pickup sound asset: Content/RGB/Assets/AbilityPickup, assigned on the four
+  child pickup Blueprints (Dash/Red/Green/Blue).
+
+FEATURE 2 VERIFICATION (2026-10-24)
+- Assistant ran RGBEditor Win64 Development builds with UE 5.7
+  (Engine/Build/BatchFiles/Build.bat RGBEditor Win64 Development
+  -Project=<RGB.uproject> -WaitMutex -NoUBA -NoHotReloadFromIDE): all succeeded.
+- User PIE reports: pause and A/Space unpause worked before the images; pickup
+  sounds worked; first image attempt failed (log: HUD root not a Canvas Panel);
+  after the Overlay fix the user reported "it works well now". The assistant
+  did not observe PIE directly; individual results for the respawn and
+  already-collected checks were not reported separately.
+
+FEATURE 3 - IMPLEMENTED (D021)
+- Mesh: Scripts/Tools/generate_flying_enemy_mesh.py (Blender 5.2 headless,
+  bmesh) writes BLENDER/FLYING_ENEMY/FLYING_ENEMY.blend and SM_FlyingEnemy.fbx:
+  faceted icosphere core with inset panel seams, 12 spikes on icosahedron vertex
+  directions (--spike-layout faces gives 20), metal hex collars. ~300 verts,
+  pivot at centre, ~89x85x100 cm. Material slot 0 = base (core/collars), slot 1
+  = emission (spikes), as ARGBFlyingEnemyCharacter::ApplyColorMaterial copies.
+  Imported to Content/RGB/Characters/FLYING (SM_FlyingEnemy, M_FlyingEnemy_Base,
+  M_FlyingEnemy_Emission; Nanite on). The user then fixed the materials in the
+  editor themselves; exact final material setup was not audited.
+- Spin: ARGBFlyingEnemyCharacter::UpdateBodySpin, called first in Tick, only
+  calls FlyingBody->AddLocalRotation. Capsule/actor rotation (used by
+  SafeMoveUpdatedComponent, probe sweeps, separation overlap, arena clamp,
+  attack range) is untouched. Settings RGB|Flying|Spin: bSpinBody, SpinRate
+  (FRotator deg/s, default 70/110/45 tumble), SpinMultiplierAtMaximumSpeed
+  (2.5). Multiplier = 1 + clamp(|FlightVelocity| / MaximumFlightSpeed, 0, 2) *
+  (max - 1); idle/attack have zero flight velocity so they use the base rate,
+  with no state-specific behaviour (user request). Spin stops while paused and
+  while hidden for respawn (actor tick off). Keep Orient Visual To Flight
+  Direction OFF: it rotates the whole actor, not just the visual.
+- BP_RGBFlyingEnemy (user-tuned): FlyingBody = SM_FlyingEnemy at component
+  scale ~1.4 (visual only); capsule unchanged at 48/48 by user choice (shots
+  and walls use it; shrinking would let shots pass through visible spikes).
+- Hit-at-a-distance issue found in testing: flyer attack range is capsule
+  radius + player radius + StopDistanceFromPlayer (default 40) +
+  AttackHitRangePadding (default 20), ~150 cm, so it damaged the player across
+  ~60 cm of air. Fixed by Blueprint tuning only (no code): advised Stop Distance
+  From Player = 0, Attack Hit Range Padding ~20 (~110 cm, near the scaled spike
+  tips). Ground/teleporter Blueprints unaffected. Elimination Radius Scale was
+  advised ~1.75 for the scaled mesh; actual saved values not audited.
+
+FEATURE 3 VERIFICATION (2026-10-24)
+- Assistant: Blender generation succeeded and a Workbench preview render was
+  inspected; RGBEditor Win64 Development build succeeded.
+- User PIE: mesh, size and spin accepted; materials fixed by the user; reported
+  happy after the attack-range tuning. Movement/avoidance regression, respawn
+  and pause checks were not reported individually.
 
 CURRENT HANDOFF - OCTOBER 22 (PROJECT RECONCILIATION THROUGH THE OCTOBER 18 HUD FIX)
 ===============================================================================
