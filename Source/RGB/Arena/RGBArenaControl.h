@@ -141,6 +141,17 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Arena|AI", meta = (EditCondition = "bUseArenaEnemyTuning"))
 	FRGBArenaFlyingTuning FlyingEnemyTuning;
 
+	/**
+	 * Use the Easy/Medium/Hard preset chosen in the main menu (Project Settings > Game > RGB Difficulty)
+	 * instead of the four tuning groups and the respawn delays above. Turn off to keep hand-tuned values.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Arena|AI", meta = (EditCondition = "bUseArenaEnemyTuning"))
+	bool bUseDifficultyPresets = true;
+
+	/** Shifts this arena toward an easier (-) or harder (+) preset; -0.5 = halfway to the next easier preset. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "RGB|Arena|AI", meta = (EditCondition = "bUseArenaEnemyTuning && bUseDifficultyPresets", ClampMin = "-1.0", ClampMax = "1.0", UIMin = "-1.0", UIMax = "1.0"))
+	float DifficultyOffset = 0.0f;
+
 	/** Arena-owned points replace tag discovery when arena AI tuning is enabled. */
 	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = "RGB|Arena|AI")
 	TArray<TObjectPtr<ATargetPoint>> TeleportTargetPoints;
@@ -208,6 +219,9 @@ private:
 	float CalculateEnemyMovementSpeedMultiplier() const;
 	void ApplyEnemyMovementSpeedMultiplier();
 	FRGBEnemyArenaAttributes CalculateEnemyAttributes(const ARGBEnemyCharacter* Enemy) const;
+
+	/** Replaces this runtime instance's tuning with the selected difficulty preset (never saved to the level). */
+	void ApplyDifficultyPreset();
 	void RespawnEnemyFromRecord(int32 SpawnRecordIndex);
 	void ClearEnemyRespawnTimers();
 };

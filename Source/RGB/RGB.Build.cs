@@ -14,7 +14,8 @@ public class RGB : ModuleRules
             "InputCore",
             "EnhancedInput",
             "Niagara",
-            "UMG"
+            "UMG",
+            "DeveloperSettings"
         });
         if (Target.bBuildEditor)
         {

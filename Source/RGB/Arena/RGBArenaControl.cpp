@@ -14,6 +14,9 @@
 #include "Engine/TargetPoint.h"
 
 #include "Kismet/GameplayStatics.h"
+#include "../Game/RGBDifficultySettings.h"
+#include "../Game/RGBGameSettingsSubsystem.h"
+#include "Engine/GameInstance.h"
 
 // Sets default values
 ARGBArenaControl::ARGBArenaControl()
@@ -99,6 +102,7 @@ void ARGBArenaControl::FinishArenaReset()
 
 void ARGBArenaControl::BeginPlay()
 {
+	ApplyDifficultyPreset();
 	Super::BeginPlay();
 
 	if (bUseArenaEnemyTuning) {
@@ -616,4 +620,29 @@ void ARGBArenaControl::ClearEnemyRespawnTimers()
 	}
 
 	EnemyRespawnTimers.Reset();
+}
+
+void ARGBArenaControl::ApplyDifficultyPreset()
+{
+	if (!bUseArenaEnemyTuning || !bUseDifficultyPresets) {
+		return;
+	}
+
+	ERGBDifficulty Difficulty = ERGBDifficulty::Medium;
+	if (const UGameInstance* GameInstance = GetGameInstance()) {
+		if (const URGBGameSettingsSubsystem* Settings = GameInstance->GetSubsystem<URGBGameSettingsSubsystem>()) {
+			Difficulty = Settings->GetDifficulty();
+		}
+	}
+
+	const FRGBDifficultyPreset Preset = URGBDifficultySettings::Resolve(Difficulty, DifficultyOffset);
+	CoordinationTuning = Preset.Coordination;
+	GroundEnemyTuning = Preset.Ground;
+	TeleporterEnemyTuning = Preset.Teleporter;
+	FlyingEnemyTuning = Preset.Flying;
+	bScaleEnemyRespawnDelayWithArenaProgress = true;
+	EnemyRespawnDelayAtNoProgress = FMath::Max(Preset.EnemyRespawnDelay.AtNoProgress, 0.0f);
+	EnemyRespawnDelayNearCompletion = FMath::Max(Preset.EnemyRespawnDelay.NearCompletion, 0.0f);
+
+	UE_LOG(LogTemp, Log, TEXT("%s uses difficulty preset %s with offset %.2f."), *GetName(), *UEnum::GetValueAsString(Difficulty), DifficultyOffset);
 }

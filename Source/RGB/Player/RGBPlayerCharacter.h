@@ -24,6 +24,7 @@ class UMaterialInterface;
 class USoundBase;
 
 class URGBDashAfterimageComponent;
+class URGBHitFlashComponent;
 
 enum class ERGBPlayerAbility : uint8;
 
@@ -155,6 +156,10 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RGB|Dash Afterimage")
 	TObjectPtr<URGBDashAfterimageComponent> DashAfterimageComponent;
+
+	/** White flash whenever the player loses health. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RGB|Feedback")
+	TObjectPtr<URGBHitFlashComponent> HitFlash;
 
 
 private:

@@ -29,6 +29,7 @@
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
 #include "Sound/SoundBase.h"
+#include "../Combat/RGBHitFlashComponent.h"
 
 // Sets default values
 ARGBEnemyCharacter::ARGBEnemyCharacter()
@@ -37,6 +38,7 @@ ARGBEnemyCharacter::ARGBEnemyCharacter()
 	PrimaryActorTick.bCanEverTick = true;
 
 	ColorComponent = CreateDefaultSubobject<URGBColorComponent>(TEXT("ColorComponent"));
+	HitFlash = CreateDefaultSubobject<URGBHitFlashComponent>(TEXT("HitFlash"));
 
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
 
@@ -193,6 +195,9 @@ bool ARGBEnemyCharacter::RecieveColorHit(ERGBColor ProjectileColor)
 	CurrentHealth = FMath::Max(CurrentHealth - 1, 0);
 
 	if (CurrentHealth > 0) {
+		if (IsValid(HitFlash)) {
+			HitFlash->Flash();
+		}
 		return true;
 	}
 

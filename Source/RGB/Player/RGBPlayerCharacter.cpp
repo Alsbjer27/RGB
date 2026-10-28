@@ -26,6 +26,7 @@
 #include "../Progression/RGBAbilityUnlockSubsytem.h"
 
 #include "Kismet/GameplayStatics.h"
+#include "../Combat/RGBHitFlashComponent.h"
 
 #include "RGBDashAfterimageComponent.h"
 #include "DrawDebugHelpers.h"
@@ -87,6 +88,7 @@ ARGBPlayerCharacter::ARGBPlayerCharacter(const FObjectInitializer& ObjectInitial
 	SideViewCamera->bUsePawnControlRotation = false;
 
 	DashAfterimageComponent = CreateDefaultSubobject<URGBDashAfterimageComponent>(TEXT("DashAfterimageComponent"));
+	HitFlash = CreateDefaultSubobject<URGBHitFlashComponent>(TEXT("HitFlash"));
 }
 
 void ARGBPlayerCharacter::FellOutOfWorld(const UDamageType& DamageType)
@@ -135,6 +137,10 @@ bool ARGBPlayerCharacter::RecieveDamageFromSource(int32 DamageAmount, AActor* Da
 	}
 
 	OnHealthChanged.Broadcast(CurrentHealth, FMath::Max(MaxHealth, 1));
+
+	if (IsValid(HitFlash)) {
+		HitFlash->Flash();
+	}
 
 	if (CurrentHealth == 0) {
 		ARGBGameMode* GameMode = GetWorld()->GetAuthGameMode<ARGBGameMode>();

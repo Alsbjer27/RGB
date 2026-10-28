@@ -16,6 +16,8 @@
 
 #include "Camera/PlayerCameraManager.h"
 #include "TimerManager.h"
+#include "Engine/GameInstance.h"
+#include "../Game/RGBGameSettingsSubsystem.h"
 
 ARGBMainMenuPlayerController::ARGBMainMenuPlayerController()
 {
@@ -42,6 +44,22 @@ void ARGBMainMenuPlayerController::SetupInputComponent()
 	if (IsValid(ConfirmAction)) {
 		EnhancedInput->BindAction(ConfirmAction, ETriggerEvent::Started, this, &ARGBMainMenuPlayerController::HandleConfirm);
 	}
+
+	if (IsValid(AdjustAction)) {
+		EnhancedInput->BindAction(AdjustAction, ETriggerEvent::Triggered, this, &ARGBMainMenuPlayerController::HandleAdjust);
+		EnhancedInput->BindAction(AdjustAction, ETriggerEvent::Completed, this, &ARGBMainMenuPlayerController::HandleAdjustReleased);
+		EnhancedInput->BindAction(AdjustAction, ETriggerEvent::Canceled, this, &ARGBMainMenuPlayerController::HandleAdjustReleased);
+	}
+	else {
+		UE_LOG(LogTemp, Warning, TEXT("%s has no AdjustAction assigned; settings values cannot be changed."), *GetName());
+	}
+
+	if (IsValid(BackAction)) {
+		EnhancedInput->BindAction(BackAction, ETriggerEvent::Started, this, &ARGBMainMenuPlayerController::HandleBack);
+	}
+	else {
+		UE_LOG(LogTemp, Warning, TEXT("%s has no BackAction assigned; only Confirm can close menu pages."), *GetName());
+	}
 }
 
 void ARGBMainMenuPlayerController::BeginPlay()
@@ -56,6 +74,8 @@ void ARGBMainMenuPlayerController::BeginPlay()
 	if (MenuDirector.IsValid())
 	{
 		MenuDirector->OnStartReady.AddDynamic(this, &ARGBMainMenuPlayerController::HandleStartReady);
+		MenuDirector->OnCreditsReady.AddDynamic(this, &ARGBMainMenuPlayerController::HandleCreditsReady);
+		MenuDirector->OnSettingsReady.AddDynamic(this, &ARGBMainMenuPlayerController::HandleSettingsReady);
 	}
 	else
 	{
@@ -80,6 +100,8 @@ void ARGBMainMenuPlayerController::EndPlay(const EEndPlayReason::Type EndPlayRea
 	if (MenuDirector.IsValid())
 	{
 		MenuDirector->OnStartReady.RemoveDynamic(this, &ARGBMainMenuPlayerController::HandleStartReady);
+		MenuDirector->OnCreditsReady.RemoveDynamic(this, &ARGBMainMenuPlayerController::HandleCreditsReady);
+		MenuDirector->OnSettingsReady.RemoveDynamic(this, &ARGBMainMenuPlayerController::HandleSettingsReady);
 	}
 
 	if (ULocalPlayer* LocalPlayer = GetLocalPlayer()) {
@@ -96,6 +118,32 @@ void ARGBMainMenuPlayerController::EndPlay(const EEndPlayReason::Type EndPlayRea
 
 void ARGBMainMenuPlayerController::HandleNavigate(const FInputActionValue& Value)
 {
+	const float Direction = Value.Get<float>();
+
+	// An analog stick rarely reports exactly zero when released, so "Completed" may never fire.
+	// Re-arm navigation as soon as the input drops back under the threshold.
+	if (FMath::Abs(Direction) < NavigationThreshold) {
+		bNavigationHeld = false;
+		return;
+	}
+
+	if (bSettingsOpen) {
+		if (!bNavigationHeld) {
+			bNavigationHeld = true;
+			const int32 RowCount = 2;
+			const int32 NewRow = FMath::Clamp(SettingsRow + (Direction > 0.0f ? -1 : 1), 0, RowCount - 1);
+			if (NewRow != SettingsRow) {
+				SettingsRow = NewRow;
+				OnSettingsRowChanged.Broadcast(SettingsRow);
+			}
+		}
+		return;
+	}
+
+	if (bCreditsOpen) {
+		return;
+	}
+
 	if (bLevelTransitionActive) {
 		return;
 	}
@@ -106,9 +154,7 @@ void ARGBMainMenuPlayerController::HandleNavigate(const FInputActionValue& Value
 		return;
 	}
 
-	const float Direction = Value.Get<float>();
-
-	if (bNavigationHeld || FMath::Abs(Direction) < NavigationThreshold) {
+	if (bNavigationHeld) {
 		return;
 	}
 
@@ -128,6 +174,16 @@ void ARGBMainMenuPlayerController::HandleNavigateReleased(const FInputActionValu
 
 void ARGBMainMenuPlayerController::HandleConfirm(const FInputActionValue& Value)
 {
+	if (bCreditsOpen) {
+		SetCreditsOpen(false);
+		return;
+	}
+
+	if (bSettingsOpen) {
+		// Values change with left/right; Back closes the page.
+		return;
+	}
+
 	if (bLevelTransitionActive) {
 		return;
 	}
@@ -216,4 +272,89 @@ void ARGBMainMenuPlayerController::HandleStartReady()
 void ARGBMainMenuPlayerController::OpenGameplayLevel()
 {
 	UGameplayStatics::OpenLevel(this, GameplayLevelName);
+}
+
+void ARGBMainMenuPlayerController::HandleBack(const FInputActionValue& Value)
+{
+	if (bCreditsOpen) {
+		SetCreditsOpen(false);
+	}
+	else if (bSettingsOpen) {
+		SetSettingsOpen(false);
+	}
+}
+
+void ARGBMainMenuPlayerController::HandleAdjust(const FInputActionValue& Value)
+{
+	const float Direction = Value.Get<float>();
+	if (FMath::Abs(Direction) < NavigationThreshold) {
+		bAdjustHeld = false;
+		return;
+	}
+	if (!bSettingsOpen || bAdjustHeld) {
+		return;
+	}
+	bAdjustHeld = true;
+	AdjustSelectedSetting(Direction > 0.0f ? 1 : -1);
+}
+
+void ARGBMainMenuPlayerController::HandleAdjustReleased(const FInputActionValue& Value)
+{
+	bAdjustHeld = false;
+}
+
+void ARGBMainMenuPlayerController::HandleSettingsReady()
+{
+	SetSettingsOpen(true);
+}
+
+void ARGBMainMenuPlayerController::SetSettingsOpen(bool bOpen)
+{
+	if (bSettingsOpen == bOpen) {
+		return;
+	}
+	bSettingsOpen = bOpen;
+	bNavigationHeld = false;
+	bAdjustHeld = false;
+	if (bSettingsOpen) {
+		SettingsRow = 0;
+		OnSettingsRowChanged.Broadcast(SettingsRow);
+	}
+	OnSettingsVisibilityChanged.Broadcast(bSettingsOpen);
+}
+
+void ARGBMainMenuPlayerController::AdjustSelectedSetting(int32 Step)
+{
+	const UGameInstance* GameInstance = GetGameInstance();
+	URGBGameSettingsSubsystem* Settings = GameInstance ? GameInstance->GetSubsystem<URGBGameSettingsSubsystem>() : nullptr;
+	if (!IsValid(Settings)) {
+		return;
+	}
+
+	if (SettingsRow == 0) {
+		const int32 Current = static_cast<int32>(Settings->GetDifficulty());
+		const int32 Next = FMath::Clamp(Current + Step, 0, static_cast<int32>(ERGBDifficulty::Hard));
+		Settings->SetDifficulty(static_cast<ERGBDifficulty>(Next));
+	}
+	else {
+		// Steps of 10 %, kept as whole percentages to avoid float drift.
+		const int32 CurrentPercent = FMath::RoundToInt(Settings->GetMasterVolume() * 10.0f) * 10;
+		const int32 NextPercent = FMath::Clamp(CurrentPercent + Step * 10, 0, 100);
+		Settings->SetMasterVolume(NextPercent / 100.0f);
+	}
+}
+
+void ARGBMainMenuPlayerController::HandleCreditsReady()
+{
+	SetCreditsOpen(true);
+}
+
+void ARGBMainMenuPlayerController::SetCreditsOpen(bool bOpen)
+{
+	if (bCreditsOpen == bOpen) {
+		return;
+	}
+	bCreditsOpen = bOpen;
+	bNavigationHeld = false;
+	OnCreditsVisibilityChanged.Broadcast(bCreditsOpen);
 }

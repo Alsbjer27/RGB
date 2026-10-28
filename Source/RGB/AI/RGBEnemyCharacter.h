@@ -17,6 +17,7 @@ class URGBArenaEnemyCoordinatorComponent;
 class ARGBArenaControl;
 class UNiagaraSystem;
 class USoundBase;
+class URGBHitFlashComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FRGBEnemyEliminatedSignature, ARGBEnemyCharacter*, EliminatedEnemy);
 
@@ -108,6 +109,10 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RGB|Color")
 	TObjectPtr<URGBColorComponent> ColorComponent;
+
+	/** White flash on a matching hit that does not eliminate the enemy. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "RGB|Feedback")
+	TObjectPtr<URGBHitFlashComponent> HitFlash;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "RGB|Color Materials")
 	TObjectPtr<UMaterialInterface> RedBaseMaterial;
