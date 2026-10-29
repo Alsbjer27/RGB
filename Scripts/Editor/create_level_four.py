@@ -1,0 +1,616 @@
+"""Author L_FOUR ("The Heart"): the final level. One hallway and one large, difficult arena.
+
+Built from the same helpers as create_level_three.py (copied below so Level 3's script stays
+untouched) and only existing RGB actors, meshes and materials. No C++, Blueprint defaults,
+project settings or other maps are changed; reference maps are verified unchanged on disk.
+
+Run with Unreal closed:
+UnrealEditor-Cmd.exe <abs>/RGB.uproject -run=pythonscript -script=<abs>/Scripts/Editor/create_level_four.py
+  -EnablePlugins=PythonScriptPlugin,EditorScriptingUtilities -unattended -nullrhi -nosound -nosplash
+
+Rebuild rule: if L_FOUR already exists, it is replaced ONLY when its file is byte-identical to what
+this script last saved (nobody has edited it since). Otherwise the script refuses.
+"""
+import unreal as u
+import os
+import json
+import math
+import hashlib
+
+ROOT = u.Paths.convert_relative_path_to_full(u.Paths.project_dir())
+MAP = "/Game/RGB/Maps/L_FOUR"
+MAP_FILE = os.path.join(ROOT, "Content/RGB/Maps/L_FOUR.umap")
+OUT = os.path.join(ROOT, "Saved", "LevelDesign")
+REPORT = os.path.join(OUT, "level_four_build.json")
+REFERENCE_MAPS = ("L_INTRO", "L_TWO_2", "L_ChromaticFoundry", "L_THREE", "L_MainMenu")
+os.makedirs(OUT, exist_ok=True)
+
+
+def sha(path):
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+refs = {n: sha(os.path.join(ROOT, "Content/RGB/Maps", n + ".umap")) for n in REFERENCE_MAPS}
+
+# ---------------------------------------------------------------- rebuild guard
+if u.EditorAssetLibrary.does_asset_exist(MAP):
+    previous = None
+    if os.path.exists(REPORT):
+        with open(REPORT, encoding="utf-8") as f:
+            previous = json.load(f).get("saved_map_sha256")
+    if not previous or not os.path.exists(MAP_FILE) or sha(MAP_FILE) != previous:
+        raise RuntimeError("L_FOUR exists and was edited after generation (or has no build record). "
+                           "Refusing to overwrite hand-made changes: " + MAP)
+    assert u.EditorAssetLibrary.delete_asset(MAP), "Could not remove the previous generated L_FOUR"
+    u.log("RGB_L4: previous generated L_FOUR was unedited; rebuilding it")
+
+levels = u.get_editor_subsystem(u.LevelEditorSubsystem)
+actors = u.get_editor_subsystem(u.EditorActorSubsystem)
+V = u.Vector
+R = u.Rotator
+
+# Copy Level 2's colour grading by value. L_TWO_2 is only read, never saved.
+levels.load_level("/Game/RGB/Maps/L_TWO_2")
+pp_settings = None
+for a in actors.get_all_level_actors():
+    if isinstance(a, u.PostProcessVolume):
+        pp_settings = a.get_editor_property("settings").copy()
+        break
+
+assert levels.new_level(MAP)
+world = u.get_editor_subsystem(u.UnrealEditorSubsystem).get_editor_world()
+world.get_world_settings().set_editor_property("default_game_mode", u.load_class(None, "/Game/RGB/Blueprints/Game/BP_RGBGameMode.BP_RGBGameMode_C"))
+world.get_world_settings().set_editor_property("kill_z", -4000.0)
+
+# ---------------------------------------------------------------- existing assets only
+def asset(path):
+    obj = u.load_asset(path)
+    assert obj, "Missing existing asset: " + path
+    return obj
+
+
+FM = "/Game/RGB/Levels/ChromaticFoundry/Materials/"
+GM = "/Game/Grid_Materials/Materials/Instances/"
+mats = {
+    "body": asset(FM + "M_Foundry_Charcoal"),
+    "deck": asset(FM + "M_Foundry_Deck"),
+    "back": asset(FM + "M_Foundry_Backwall"),
+    "white": asset(FM + "M_Foundry_Ivory"),
+    "red": asset(FM + "M_Foundry_Red"),
+    "green": asset(FM + "M_Foundry_Green"),
+    "blue": asset(FM + "M_Foundry_Blue"),
+    "amber": asset(FM + "M_Foundry_Amber"),
+    "metal": asset(GM + "MI_BlockOut_Metal"),
+    "asphalt": asset(GM + "MI_BlockOut_Asphalt"),
+    "neon": asset(GM + "MI_BlockOut_Grass_Neon_2"),
+    "lava": asset(GM + "MI_BlockOut_Lava"),
+}
+cube = asset("/Engine/BasicShapes/Cube")
+tile_mesh = asset("/Game/RGB/Assets/Platforms/Meshes/PLATFORM_GROUND")   # Level 2 floor tile, 400 x 400 x 50, centred pivot
+gear_mesh = asset("/Game/RGB/Assets/LEVEL_ASSETS/CustomMeshes/Gear/Gear_Sharp")
+pole_mesh = asset("/Game/RGB/Assets/LEVEL_ASSETS/CustomMeshes/HazardPoles/Hazard_Pole")
+robot_heavy = asset("/Game/RGB/Characters/HEAVY/Meshes/Robot_Rigged_BindPose")
+robot_teleporter = asset("/Game/RGB/Characters/TELEPORTER/Meshes/TELEPORTER_RIGGED")
+red, green, blue = u.RGBColor.RED, u.RGBColor.GREEN, u.RGBColor.BLUE
+
+report = {"map": MAP, "references_before": refs, "sections": [], "arenas": [], "moving_platforms": 0,
+          "rotating_platforms": 0, "jump_pads": 0, "robots_on_line": 0, "warnings": []}
+
+# ---------------------------------------------------------------- spawning helpers
+def spawn(cls, label, xyz=(0, 0, 0), folder="00_Environment", rotation=None):
+    if isinstance(cls, str):
+        cls = u.load_class(None, cls)
+    assert cls, label
+    a = actors.spawn_actor_from_class(cls, V(*xyz), rotation or R())
+    assert a, label
+    a.set_actor_label(label)
+    a.set_folder_path(folder)
+    return a
+
+
+def component(actor, name):
+    return next(c for c in actor.get_components_by_class(u.ActorComponent) if c.get_name() == name)
+
+
+def block(label, xyz, size, mat="body", folder="00_Environment", collision=True, movable=False):
+    a = spawn(u.StaticMeshActor, label, xyz, folder)
+    sm = a.static_mesh_component
+    if movable:
+        sm.set_mobility(u.ComponentMobility.MOVABLE)
+    sm.set_static_mesh(cube)
+    sm.set_material(0, mats[mat])
+    sm.set_collision_profile_name("BlockAll" if collision else "NoCollision")
+    if not collision:
+        sm.set_editor_property("cast_shadow", False)
+    a.set_actor_scale3d(V(*(s / 100.0 for s in size)))
+    return a
+
+
+def attach(child, parent):
+    child.attach_to_actor(parent, "", u.AttachmentRule.KEEP_WORLD, u.AttachmentRule.KEEP_WORLD, u.AttachmentRule.KEEP_WORLD, False)
+
+
+def sign(label, text, xyz, size=75, color=(210, 230, 240), folder="00_Environment"):
+    a = spawn(u.TextRenderActor, label, xyz, folder, R(pitch=0, yaw=90, roll=0))
+    t = a.text_render
+    t.set_text(text)
+    t.set_world_size(size)
+    t.set_horizontal_alignment(u.HorizTextAligment.EHTA_CENTER)
+    t.set_text_render_color(u.Color(*color, 255))
+    return a
+
+
+def tiles(label, x0, x1, top, folder, edge="amber"):
+    """A Level-2 style floor of PLATFORM_GROUND tiles covering x0..x1 with its top at z=top."""
+    centers, c = [], x0 + 200
+    while c + 200 < x1:
+        centers.append(c)
+        c += 390
+    if not centers or centers[-1] + 200 < x1:
+        centers.append(x1 - 200)
+    made = []
+    for i, cx in enumerate(centers):
+        a = spawn(u.StaticMeshActor, "%s_Tile%02d" % (label, i), (cx, 0, top - 25), folder)
+        a.static_mesh_component.set_static_mesh(tile_mesh)
+        made.append(a)
+    if edge:
+        block(label + "_EdgeLight", ((x0 + x1) / 2, 212, top - 18), (x1 - x0 - 20, 14, 16), edge, folder, False)
+        block(label + "_Girder", ((x0 + x1) / 2, -40, top - 115), (x1 - x0, 300, 130), "body", folder, False)
+    return made
+
+
+def path(label, points, folder, closed=False, curve=False):
+    a = spawn("/Script/RGB.RGBPlatformPath", label, points[0], folder)
+    spline = component(a, "PathSpline")
+    spline.clear_spline_points(False)
+    for p in points:
+        spline.add_spline_point(V(*p), u.SplineCoordinateSpace.WORLD, False)
+    for i in range(len(points)):
+        spline.set_spline_point_type(i, u.SplinePointType.CURVE if curve else u.SplinePointType.LINEAR, False)
+    spline.set_closed_loop(closed, False)
+    spline.update_spline()
+    return a
+
+
+def mover(label, points, folder, mesh=None, size=None, mat=None, mode="ping_pong", speed=300.0, active=True,
+          progress=0.0, collision=True, closed=False, curve=False):
+    """Native RGBMovingPlatform following a native RGBPlatformPath."""
+    route = path(label + "_Path", points, folder + "/Paths", closed, curve)
+    a = spawn("/Script/RGB.RGBMovingPlatform", label, points[0], folder)
+    a.set_editor_property("movement_path", route)
+    if progress:
+        a.set_editor_property("starting_path_progress", float(progress))
+    sm = component(a, "PlatformMesh")
+    sm.set_static_mesh(mesh or cube)
+    if mat:
+        sm.set_material(0, mats[mat])
+    if size:
+        sm.set_editor_property("relative_scale3d", V(*(s / 100.0 for s in size)))
+    sm.set_collision_profile_name("BlockAll" if collision else "NoCollision")
+    if not collision:
+        sm.set_editor_property("cast_shadow", False)
+    move = component(a, "PathMovement")
+    assert move.get_editor_property("movement_path") == route, label + " path not applied"
+    move.set_editor_property("start_active", active)
+    move.set_editor_property("movement_speed", float(speed))
+    move.set_editor_property("movement_mode", {"ping_pong": u.RGBPathMovementMode.PING_PONG,
+                                               "one_way": u.RGBPathMovementMode.ONE_WAY,
+                                               "loop": u.RGBPathMovementMode.LOOP}[mode])
+    component(a, "RotationMovement").set_editor_property("start_active", False)
+    report["moving_platforms"] += 1
+    return a
+
+
+def rotator_platform(label, xyz, folder, mesh=None, size=None, mat=None, axis=(0, 1, 0), speed=45.0, stepped=False,
+                     step=180.0, delay=2.0, collision=True):
+    """RGBMovingPlatform whose RGBRotationComponent spins it in place (its path is a 1 cm anchor)."""
+    x, y, z = xyz
+    a = mover(label, [(x, y, z), (x, y, z + 1)], folder, mesh, size, mat, "ping_pong", 1.0, False, 0.0, collision)
+    report["moving_platforms"] -= 1
+    rot = component(a, "RotationMovement")
+    rot.set_editor_property("rotation_mode", u.RGBRotationMode.STEPPED if stepped else u.RGBRotationMode.CONTINUOUS)
+    rot.set_editor_property("rotation_axis", V(*axis))
+    rot.set_editor_property("rotation_speed", float(speed))
+    rot.set_editor_property("step_angle", float(step))
+    rot.set_editor_property("delay_between_steps", float(delay))
+    rot.set_editor_property("start_active", True)
+    report["rotating_platforms"] += 1
+    return a
+
+
+def flip_plate(label, x, top, folder, delay=2.6):
+    """A floor tile that flips 180 degrees around the depth axis, then rests for `delay` seconds."""
+    a = rotator_platform(label, (x, 0, top - 25), folder, tile_mesh, None, None, (0, 1, 0), 360.0, True, 180.0, delay)
+    stripe = block(label + "_Warning", (x, 206, top - 18), (380, 10, 14), "amber", folder, False, True)
+    attach(stripe, a)
+    return a
+
+
+def boost(label, x, z, speed, folder):
+    a = spawn("/Game/RGB/Blueprints/Platforms/BP_RGBJumpPad_Visual.BP_RGBJumpPad_Visual_C", label, (x, 0, z + 10), folder)
+    a.set_editor_property("launch_speed", float(speed))
+    report["jump_pads"] += 1
+    return a
+
+
+def checkpoint(label, x, z, lo, hi, folder):
+    a = spawn("/Script/RGB.RGBCheckpoint", label, (x, 0, z), folder)
+    component(a, "RespawnPoint").set_editor_property("relative_location", V(0, 0, 110))
+    trigger = component(a, "RespawnTrigger")
+    trigger.set_editor_property("relative_location", V((lo + hi) / 2 - x, 0, -2000 - z))
+    trigger.set_box_extent(V((hi - lo) / 2, 1000, 150))
+    block(label + "_Beacon", (x, -270, z + 100), (35, 35, 200), "white", folder, False)
+    block(label + "_Halo", (x, 0, z + 4), (130, 360, 8), "amber", folder, False)
+    return a
+
+
+def camera(label, lo, hi, base, arena=True):
+    a = spawn("/Script/RGB.RGBArenaCameraZone", label, ((lo + hi) / 2, 0, base + 2500), "01_Cameras")
+    component(a, "ArenaBounds").set_box_extent(V((hi - lo) / 2, 430, 3200))
+    cam = component(a, "ArenaCamera")
+    cam.set_editor_property("relative_location", V(0, 6400 if arena else 4000, -1600))
+    cam.set_editor_property("relative_rotation", R(pitch=0, yaw=-90, roll=0))
+    cam.set_editor_property("field_of_view", 65.0)
+    a.set_editor_property("camera_tracking_mode", u.RGBArenaCameraTrackingMode.FOLLOW_PLAYER_Z if arena else u.RGBArenaCameraTrackingMode.FOLLOW_PLAYER_XZ)
+    a.set_editor_property("vertical_follow_offset", 650.0 if arena else 350.0)
+    a.set_editor_property("blend_duration", 0.75)
+    a.set_editor_property("arena_view_mode", u.RGBArenaViewMode.NORMAL_PERSPECTIVE)
+    return a
+
+
+def color_platform(label, x, z, width, initial, folder):
+    a = spawn("/Game/RGB/Blueprints/Platforms/BP_RGBPlatformLarge.BP_RGBPlatformLarge_C", label, (x, 0, z - 30), folder)
+    a.set_actor_scale3d(V(width / 400.0, 1.5, 1.2))
+    a.set_editor_property("interaction_mode", u.RGBPlatformInteractionMode.LANDING_ONLY)
+    c = component(a, "ColorComponent")
+    c.set_editor_property("randomize_initial_color", False)
+    c.set_editor_property("initial_color", initial)
+    name = {red: "Red", green: "Green", blue: "Blue"}[initial]
+    component(a, "PlatformMesh").set_material(a.get_editor_property("color_material_index"), asset("/Game/RGB/Assets/Platforms/Materials/MI_PlatformLarge_" + name))
+    return a
+
+
+def enemy(kind, label, x, surface_z, folder, initial):
+    bp = {"ground": "BP_RGBEnemyHeavy", "teleporter": "BP_RGBEnemyTeleporter", "flying": "BP_RGBFlyingEnemy"}[kind]
+    a = spawn("/Game/RGB/Blueprints/Enemies/" + bp + "." + bp + "_C", label, (x, 0, surface_z + 200), folder)
+    s = 1.7 if kind == "ground" else 1.5 if kind == "teleporter" else 1.0
+    a.set_actor_scale3d(V(s, s, s))
+    half = a.get_component_by_class(u.CapsuleComponent).get_scaled_capsule_half_height()
+    a.set_actor_location(V(x, 0, surface_z + half + 8), False, False)
+    c = component(a, "ColorComponent")
+    c.set_editor_property("randomize_initial_color", False)
+    c.set_editor_property("initial_color", initial)
+    if kind == "teleporter":
+        a.set_editor_property("teleport_point_search_radius", 10000.0)
+    return a
+
+
+def light(label, xyz, color, intensity=60.0, radius=3000.0, folder="00_Environment/Lights"):
+    a = spawn(u.PointLight, label, xyz, folder)
+    lc = a.light_component
+    lc.set_mobility(u.ComponentMobility.MOVABLE)
+    try:
+        lc.set_editor_property("intensity_units", u.LightUnits.CANDELAS)
+    except Exception:
+        pass
+    lc.set_intensity(float(intensity))
+    lc.set_light_color(u.LinearColor(*color, 1.0))
+    lc.set_attenuation_radius(float(radius))
+    lc.set_cast_shadows(False)
+    return a
+
+
+def robot(label, mesh, height, xyz, folder):
+    """A decorative, unanimated robot body (bind pose) standing on xyz, scaled to a target height."""
+    a = spawn(u.SkeletalMeshActor, label, xyz, folder)
+    sk = a.skeletal_mesh_component
+    try:
+        sk.set_skeletal_mesh_asset(mesh)
+    except Exception:
+        sk.set_editor_property("skeletal_mesh_asset", mesh)
+    sk.set_collision_profile_name("NoCollision")
+    sk.set_editor_property("cast_shadow", False)
+    origin, extent = a.get_actor_bounds(False)
+    if extent.z > 1:
+        s = height / (extent.z * 2)
+        a.set_actor_scale3d(V(s, s, s))
+        origin, extent = a.get_actor_bounds(False)
+    loc = a.get_actor_location()
+    a.set_actor_location(V(loc.x + (xyz[0] - origin.x), loc.y + (xyz[1] - origin.y), loc.z + (xyz[2] - (origin.z - extent.z))), False, False)
+    return a
+
+
+# The gear mesh's thickness axis is found from its bounds, then turned to face the camera,
+# so the RGBRotationComponent can spin it around world Y like a real flywheel.
+_gb = gear_mesh.get_bounding_box()
+_gc = V((_gb.min.x + _gb.max.x) / 2, (_gb.min.y + _gb.max.y) / 2, (_gb.min.z + _gb.max.z) / 2)
+_gs = [_gb.max.x - _gb.min.x, _gb.max.y - _gb.min.y, _gb.max.z - _gb.min.z]
+_thin = _gs.index(min(_gs))
+_face = max(s for i, s in enumerate(_gs) if i != _thin)
+_grot = {0: R(pitch=0, yaw=90, roll=0), 1: R(), 2: R(pitch=0, yaw=0, roll=90)}[_thin]
+report["gear_mesh"] = {"size": _gs, "thickness_axis": "XYZ"[_thin]}
+
+
+def gear(label, xyz, diameter, speed, folder, collision=False):
+    a = rotator_platform(label, xyz, folder, gear_mesh, None, None, (0, 1, 0), abs(speed), False, collision=collision)
+    if speed < 0:
+        component(a, "RotationMovement").set_editor_property("rotation_axis", V(0, -1, 0))
+    sm = component(a, "PlatformMesh")
+    s = diameter / _face
+    sm.set_editor_property("relative_rotation", _grot)
+    sm.set_editor_property("relative_scale3d", V(s, s, s))
+    cx, cy, cz = _gc.x * s, _gc.y * s, _gc.z * s
+    # Same mapping as _grot: yaw 90 sends (x,y,z) to (-y,x,z); roll 90 sends it to (x,z,-y).
+    centre = {0: (-cy, cx, cz), 1: (cx, cy, cz), 2: (cx, cz, -cy)}[_thin]
+    sm.set_editor_property("relative_location", V(-centre[0], -centre[1], -centre[2]))
+    return a
+
+
+# ---------------------------------------------------------------- robot factory backdrop
+ACCENT_RGB = {"red": (1.0, 0.08, 0.05), "green": (0.1, 1.0, 0.25), "blue": (0.1, 0.35, 1.0), "amber": (1.0, 0.45, 0.08)}
+
+
+def backdrop(key, lo, hi, base, accent):
+    f = "00_Environment/Factory/" + key
+    w = hi - lo
+    mid = (lo + hi) / 2
+    # Hall shell: back wall, ribbed metal panels, accent band and observation windows.
+    block(key + "_BackWall", (mid, -3700, base + 1500), (w + 40, 200, 10000), "back", f, False)
+    for i, x in enumerate(range(int(lo) + 400, int(hi), 1600)):
+        block("%s_Panel_%02d" % (key, i), (x, -3560, base + 1900), (1400, 40, 5200), "metal", f, False)
+        block("%s_Rib_%02d" % (key, i), (x + 780, -3480, base + 1900), (120, 120, 6000), "body", f, False)
+        block("%s_Window_%02d" % (key, i), (x, -3520, base + 3300), (900, 20, 160), "white", f, False)
+        block("%s_Status_%02d" % (key, i), (x - 560, -3520, base + 900), (90, 20, 90), ("red", "green", "blue")[i % 3], f, False)
+    block(key + "_AccentBand", (mid, -3500, base + 2700), (w, 20, 40), accent, f, False)
+    # Ceiling trusses with hanging lamps.
+    block(key + "_RoofBeam", (mid, -1300, base + 4400), (w, 160, 180), "body", f, False)
+    for i, x in enumerate(range(int(lo) + 800, int(hi), 1600)):
+        block("%s_Truss_%02d" % (key, i), (x, -2300, base + 4400), (140, 2600, 160), "body", f, False)
+        block("%s_Lamp_%02d" % (key, i), (x, -1300, base + 4180), (260, 160, 30), "white", f, False)
+    # Flywheels turning on the back wall.
+    gear(key + "_Flywheel_A", (lo + w * 0.28, -3150, base + 2900), 2600, 9.0, f)
+    gear(key + "_Flywheel_B", (lo + w * 0.74, -3150, base + 700), 1800, -14.0, f)
+    # Lower catwalk with hazard railings.
+    block(key + "_Catwalk", (mid, -2450, base - 400), (w, 500, 60), "asphalt", f, False)
+    for i, x in enumerate(range(int(lo) + 700, int(hi) - 400, 1500)):
+        p = spawn(u.StaticMeshActor, "%s_Railing_%02d" % (key, i), (x, -2240, base - 330), f)
+        p.static_mesh_component.set_static_mesh(pole_mesh)
+        p.static_mesh_component.set_collision_profile_name("NoCollision")
+        p.set_actor_scale3d(V(0.45, 0.45, 0.25))
+    # Gantry crane carrying a robot shell back and forth.
+    block(key + "_GantryRail", (mid, -2200, base + 3500), (w, 150, 150), "body", f, False)
+    block(key + "_GantryStripe", (mid, -2110, base + 3500), (w, 10, 24), accent, f, False)
+    trolley = mover(key + "_GantryTrolley", [(lo + 700, -2200, base + 3330), (hi - 700, -2200, base + 3330)], f,
+                    size=(420, 260, 160), mat="body", speed=240.0, collision=False)
+    cable = block(key + "_GantryCable", (lo + 700, -2200, base + 2900), (18, 18, 700), "body", f, False, True)
+    attach(cable, trolley)
+    held = robot(key + "_GantryRobot", robot_heavy, 520, (lo + 700, -2200, base + 2020), f)
+    attach(held, trolley)
+    # Assembly conveyor: robot shells ride between two press housings that hide the loop seam.
+    belt_z = base + 160
+    block(key + "_Belt", (mid, -1500, belt_z), (w - 300, 380, 100), "deck", f, False)
+    block(key + "_BeltEdge", (mid, -1300, belt_z + 40), (w - 300, 14, 18), "amber", f, False)
+    for i, x in enumerate(range(int(lo) + 500, int(hi) - 300, 900)):
+        block("%s_BeltLeg_%02d" % (key, i), (x, -1500, belt_z - 800), (80, 80, 1500), "body", f, False)
+    for side, hx in (("In", lo + 450), ("Out", hi - 450)):
+        block("%s_Housing%s" % (key, side), (hx, -1500, base + 600), (760, 640, 1000), "body", f, False)
+        block("%s_HousingLight%s" % (key, side), (hx, -1175, base + 900), (500, 10, 40), accent, f, False)
+    lane = [(lo + 450, -1500, belt_z + 70), (hi - 450, -1500, belt_z + 70)]
+    count = max(2, int(w / 1500))
+    for n in range(count):
+        carrier = mover("%s_Carrier_%02d" % (key, n), lane, f, size=(320, 260, 40), mat="body", mode="loop",
+                        speed=150.0, progress=n / float(count), collision=False)
+        # Place the robot where the carrier will be at BeginPlay, then attach it.
+        cx = lane[0][0] + (lane[1][0] - lane[0][0]) * n / float(count)
+        carrier.set_actor_location(V(cx, -1500, belt_z + 70), False, False)
+        body = robot("%s_LineRobot_%02d" % (key, n), robot_heavy if n % 2 == 0 else robot_teleporter,
+                     430 if n % 2 == 0 else 300, (cx, -1500, belt_z + 90), f)
+        attach(body, carrier)
+        report["robots_on_line"] += 1
+    # Stamping presses above the belt.
+    for i, x in enumerate(range(int(lo) + 1500, int(hi) - 1200, 2200)):
+        block("%s_PressColumn_%02d" % (key, i), (x, -1650, base + 2900), (200, 200, 2600), "body", f, False)
+        head = mover("%s_PressHead_%02d" % (key, i), [(x, -1500, base + 1350), (x, -1500, base + 950)], f,
+                     size=(340, 340, 220), mat="body", speed=160.0 + 30 * (i % 3), collision=False)
+        glow = block("%s_PressGlow_%02d" % (key, i), (x, -1500, base + 1235), (300, 300, 12), accent, f, False, True)
+        attach(glow, head)
+    light(key + "_Light_A", (lo + w * 0.3, -1200, base + 1700), ACCENT_RGB[accent])
+    light(key + "_Light_B", (lo + w * 0.7, -1200, base + 1700), ACCENT_RGB["amber"], 45.0)
+
+
+def section(name, lo, hi, base, accent, arena=False):
+    zone = camera(name + "_Camera", lo, hi, base, arena)
+    backdrop(name, lo, hi, base, accent)
+    report["sections"].append({"name": name, "range": [lo, hi], "base_z": base, "arena": arena})
+    return zone
+
+
+def catch_wall(label, x, bottom, top, folder):
+    """Closes the end of a catch floor so a fall can never respawn the player past an obstacle."""
+    block(label, (x, 0, (bottom + top) / 2), (40, 500, top - bottom), "body", folder)
+
+
+# ---------------------------------------------------------------- arenas
+def arena(index, title, lo, hi, base, required, layouts, enemies, boosts, entry, exit_, shuttle=None):
+    accent = {red: "red", green: "green", blue: "blue"}[required]
+    folder = "%02d_%s" % (index * 10, title)
+    centre = (lo + hi) / 2
+    zone = section("A%d" % index, lo, hi, base, accent, True)
+    tiles("A%d_RecoveryDeck" % index, lo, hi, base - 550, folder + "/Recovery", accent)
+    tiles("A%d_Entry" % index, entry[0], entry[1], base, folder, accent)
+    tiles("A%d_Exit" % index, exit_[0], exit_[1], base, folder, accent)
+    platforms = []
+    for n, (x, height, width, initial) in enumerate(layouts):
+        platforms.append(color_platform("A%d_Puzzle_%02d" % (index, n + 1), x, base + height, width, initial, folder + "/Puzzle"))
+        block("A%d_PadSupport_%02d" % (index, n + 1), (x, -300, base + height - 260), (width * 0.5, 160, 400), "body", folder, False)
+        sign("A%d_PadNumber_%02d" % (index, n + 1), "%02d" % (n + 1), (x, -320, base + height + 155), 55, folder=folder)
+    spawned = [enemy(k, "A%d_%s_%d" % (index, k, n + 1), x, base + z, folder + "/Enemies", c) for n, (k, x, z, c) in enumerate(enemies)]
+    targets = []
+    if any(e[0] == "teleporter" for e in enemies):
+        for n, (x, height, width, _) in enumerate(layouts):
+            for side in (-1, 1):
+                targets.append(spawn(u.TargetPoint, "A%d_Teleport_%02d_%s" % (index, n + 1, side),
+                                     (x + side * min(width / 3, 300), 0, base + height + 30), folder + "/TeleportPoints"))
+    control = spawn("/Game/RGB/Blueprints/Map_Arena/BP_RGBArenaControl.BP_RGBArenaControl_C", "A%d_Control_%s" % (index, accent.upper()),
+                    (centre, -410, base + 2000), folder + "/Rules")
+    control.set_editor_property("required_color", required)
+    control.set_editor_property("assigned_platforms", platforms)
+    control.set_editor_property("assigned_enemies", spawned)
+    control.set_editor_property("arena_camera_zone", zone)
+    control.set_editor_property("use_arena_enemy_tuning", True)
+    control.set_editor_property("teleport_target_points", targets)
+    control.set_editor_property("scale_enemy_respawn_delay_with_arena_progress", True)
+    control.set_editor_property("enemy_respawn_delay_at_no_progress", 12.0)
+    control.set_editor_property("enemy_respawn_delay_near_completion", 7.0 if index == 1 else 5.0)
+    tuning = control.get_editor_property("coordination_tuning")
+    maximum = tuning.get_editor_property("maximum_attackers")
+    maximum.set_editor_property("at_no_progress", 1.0)
+    maximum.set_editor_property("near_completion", float(min(index + 1, 3)))
+    tuning.set_editor_property("maximum_attackers", maximum)
+    control.set_editor_property("coordination_tuning", tuning)
+    gate_x = hi - 70
+    gate = mover("A%d_CompletionShutter" % index, [(gate_x, 0, base + 2400), (gate_x, 0, base + 9400)], folder + "/Exit",
+                 size=(180, 950, 7000), mat="body", mode="one_way", speed=1800.0, active=False)
+    attach(block("A%d_ShutterStripe" % index, (gate_x, 480, base + 300), (190, 10, 60), "amber", folder + "/Exit", False, True), gate)
+    opener = spawn("/Script/RGB.RGBArenaCompletionActivator", "A%d_OpenExitOnCompletion" % index, (hi - 400, -500, base), folder + "/Rules")
+    opener.set_editor_property("arena_control", control)
+    opener.set_editor_property("controlled_actors", [gate])
+    if shuttle:
+        (sx0, sx1, sh) = shuttle
+        mover("A%d_Shuttle" % index, [(sx0, 0, base + sh + 6 - 25), (sx1, 0, base + sh + 6 - 25)], folder + "/Traversal",
+              tile_mesh, speed=220.0)
+    for label, x, z, speed in boosts:
+        boost("A%d_%s" % (index, label), x, base + z, speed, folder + "/Traversal")
+    block("A%d_Header" % index, (centre, -550, base + 3100), (hi - lo - 600, 50, 30), accent, folder, False)
+    sign("A%d_Title" % index, "%02d / %s" % (index, title.upper().replace("_", " ")), (centre, -590, base + 2800), 150, folder=folder)
+    sign("A%d_Goal" % index, "MATCH ALL %d PADS TO %s  /  EXIT UNLOCKS AT 100%%" % (len(platforms), accent.upper()),
+         (centre, -590, base + 2540), 65, folder=folder)
+    sign("A%d_ExitLabel" % index, "SEALED\nCOMPLETE ARENA", (hi - 220, 495, base + 500), 50, folder=folder)
+    checkpoint("A%d_Checkpoint" % index, entry[0] + 200, base, lo, hi, folder + "/Recovery")
+    report["arenas"].append({"index": index, "control": control.get_actor_label(), "range": [lo, hi], "base_z": base,
+                             "target": accent, "platforms": len(platforms), "enemies": [[e[0], str(e[3])] for e in enemies],
+                             "teleport_points": len(targets), "gate": gate.get_actor_label()})
+    return control
+
+
+# ================================================================ LEVEL LAYOUT (x right, z up)
+# Player: jump 1120 cm/s, gravity x3 => ~213 cm rise, ~760 cm running jump. Steps <= 140, gaps <= 500.
+# Jump pad launch speed v rises ~v*v/5880 cm (2300 ~ 900, 2400 ~ 980, 2700 ~ 1240, 2800 ~ 1330, 3400 ~ 1970).
+# Arena spacing follows the PIE-verified Chromatic Foundry rooms: 1300 cm base pads 1800 apart (500 cm gaps),
+# upper pads over the gaps, boosts ~1100 cm to the side of their target, recovery boosts under the gaps.
+
+sun = spawn(u.DirectionalLight, "Heart_KeyLight", (0, 0, 6000), rotation=R(pitch=-52, yaw=-35, roll=0))
+sun.light_component.set_mobility(u.ComponentMobility.MOVABLE)
+sun.light_component.set_intensity(2.5)
+sky = spawn(u.SkyLight, "Heart_SkyFill", (0, 0, 3000))
+sky.light_component.set_mobility(u.ComponentMobility.MOVABLE)
+sky.light_component.set_editor_property("intensity", 1.6)
+sky.light_component.set_editor_property("real_time_capture", True)
+spawn(u.SkyAtmosphere, "Heart_Atmosphere")
+fog = spawn(u.ExponentialHeightFog, "Heart_Haze", (0, 0, -1500))
+fog.component.set_editor_property("fog_density", 0.015)
+pp = spawn(u.PostProcessVolume, "Heart_PostProcess")
+if pp_settings:
+    pp.set_editor_property("settings", pp_settings)
+pp.set_editor_property("unbound", True)
+block("Heart_MoltenFloor", (9000, -1000, -2750), (26000, 7000, 100), "lava", "00_Environment", False)
+for i, x in enumerate(range(-2000, 20000, 6000)):
+    light("Heart_MoltenGlow_%02d" % i, (x, -1000, -2200), (1.0, 0.35, 0.05), 250.0, 5000.0)
+block("Heart_WallLeft", (-2450, 0, 1500), (100, 800, 6000), "body", "00_Environment")
+block("Heart_WallRight", (19550, 0, 3000), (100, 800, 6000), "body", "00_Environment")
+
+# ---- ARRIVAL (-2400 .. 1600, z 0)
+F = "02_Arrival"
+section("Arrival", -2400, 1600, 0, "amber")
+tiles("Arrival_Floor", -2400, 1600, 0, F)
+spawn(u.PlayerStart, "PlayerStart_Heart", (-2000, 0, 115), F)
+checkpoint("Arrival_Checkpoint", -1900, 0, -2400, 1600, F)
+# Backup unlocks for testing this level on its own; each removes itself if already collected.
+for i, bp in enumerate(("BP_RGBDashPickup", "BP_RGBRedWeaponPickup", "BP_RGBGreenWeaponPickup", "BP_RGBBlueWeaponPickup")):
+    p = spawn("/Game/RGB/Blueprints/Progression/" + bp + "." + bp + "_C", "Backup_" + bp, (-1500 + i * 380, 0, 85), F)
+    p.get_component_by_class(u.SphereComponent).set_sphere_radius(300)
+sign("Heart_Title", "THE HEART", (-300, -600, 1350), 190, folder=F)
+sign("Heart_Brief", "THE SOURCE IS BELOW. EVERYTHING THE FACTORY HAS LEFT IS WAITING.", (-300, -590, 1000), 55, folder=F)
+
+# ---- HALLWAY: THE DESCENT (1600 .. 6400, z 0): flip plates, an island, a shuttle, then a launch up.
+F = "05_The_Descent"
+section("Hallway", 1600, 6400, 0, "red")
+checkpoint("Hallway_Checkpoint", 1300, 0, 1600, 6400, F)
+for n, x in enumerate((2100, 2800)):
+    flip_plate("Hallway_FlipPlate_%d" % (n + 1), x, 0, F, 2.4)
+tiles("Hallway_Island", 3300, 3700, 0, F)
+mover("Hallway_Shuttle", [(4150, 0, -25), (5250, 0, -25)], F, tile_mesh, speed=380.0)
+tiles("Hallway_ExitLedge", 5600, 6400, 0, F)
+boost("Hallway_LaunchToHeart", 6200, 0, 2400, F)
+tiles("Hallway_CatchFloor", 1600, 5600, -600, F)
+boost("Hallway_RecoveryBack", 1850, -600, 2400, F)
+boost("Hallway_RecoveryForward", 5400, -600, 2400, F)
+sign("Hallway_Sign", "THE DESCENT\nPLATES FLIP FASTER HERE", (3900, -590, 1500), 70, folder=F)
+
+# ---- FINAL ARENA: THE HEART, target BLUE, enemies of every colour (6400 .. 16400, z 600)
+red, green, blue = u.RGBColor.RED, u.RGBColor.GREEN, u.RGBColor.BLUE
+heart = arena(1, "The_Heart", 6400, 16400, 600, blue,
+      [  # base level: five wide pads
+       (7900, 0, 1300, red), (9700, 0, 1300, green), (11500, 0, 1300, red), (13300, 0, 1300, green), (15100, 0, 1300, red),
+         # upper level over the gaps
+       (8700, 1000, 900, green), (10500, 1000, 900, red), (12300, 1000, 900, green), (14100, 1000, 900, red),
+         # high level and apex
+       (9600, 1900, 800, red), (13200, 1900, 800, green), (11400, 2800, 900, red)],
+      [("ground", 7900, 0, red), ("ground", 11500, 0, blue), ("ground", 15100, 0, green),
+       ("teleporter", 8700, 1000, red), ("teleporter", 12300, 1000, green), ("teleporter", 14100, 1000, blue),
+       ("flying", 9600, 1500, red), ("flying", 11400, 2300, green), ("flying", 13200, 1500, blue)],
+      [("Boost_Upper_1", 7600, 0, 2800), ("Boost_Upper_2", 9400, 0, 2800), ("Boost_Upper_3", 11200, 0, 2800), ("Boost_Upper_4", 13000, 0, 2800),
+       ("Boost_High_Left", 8450, 1000, 2700), ("Boost_High_Right", 14350, 1000, 2700),
+       ("Boost_Apex_Left", 10750, 1000, 3500), ("Boost_Apex_Right", 12050, 1000, 3500),
+       ("RecoveryBoost_1", 8800, -550, 2300), ("RecoveryBoost_2", 10600, -550, 2300), ("RecoveryBoost_3", 12400, -550, 2300), ("RecoveryBoost_4", 14200, -550, 2300)],
+      (6400, 7200), (15800, 16400))
+# A 100 m room needs a wider view than the standard arena camera.
+heart_zone = heart.get_editor_property("arena_camera_zone")
+component(heart_zone, "ArenaCamera").set_editor_property("relative_location", V(0, 8000, -1500))
+# Harder than the selected difficulty preset (half way to the next preset). Needs the difficulty C++ build.
+try:
+    heart.set_editor_property("difficulty_offset", 0.5)
+    report["difficulty_offset"] = 0.5
+except Exception as error:
+    report["warnings"].append("difficulty_offset not set (build the difficulty preset C++ first): %s" % error)
+# The core of the factory: two counter-rotating gears with RGB light behind the arena.
+gear("Heart_Core_Outer", (11400, -1600, 2500), 4200, 7.0, "10_The_Heart")
+gear("Heart_Core_Inner", (11400, -1450, 2500), 2400, -12.0, "10_The_Heart")
+for i, col in enumerate(("red", "green", "blue")):
+    light("Heart_CoreLight_%s" % col, (10600 + i * 800, -1200, 2500), ACCENT_RGB[col], 180.0, 3800.0, "10_The_Heart")
+
+# ---- DEPARTURE (16400 .. 19500, z 600)
+F = "40_Departure"
+section("Departure", 16400, 19500, 600, "blue")
+tiles("Departure_Floor", 16400, 19500, 600, F, "blue")
+checkpoint("Departure_Checkpoint", 16800, 600, 16400, 19500, F)
+sign("Departure_End", "THE HEART IS STILL\nRED  GREEN  BLUE", (17900, -590, 1900), 140, folder=F)
+destination = "/Game/RGB/Maps/L_ENDING" if u.EditorAssetLibrary.does_asset_exist("/Game/RGB/Maps/L_ENDING") else "/Game/RGB/Maps/L_MainMenu"
+report["exit_destination"] = destination
+portal = spawn("/Script/RGB.RGBLevelTransitionArea", "Departure_Exit", (18900, 0, 900), F)
+portal.set_editor_property("destination_level", asset(destination))
+portal.set_editor_property("fade_out_duration", 2.0)
+component(portal, "TransitionTrigger").set_box_extent(V(150, 350, 450))
+for x in (18650, 19150):
+    block("Departure_PortalFrame_%d" % x, (x, -200, 1050), (90, 120, 900), "blue", F, False)
+
+# ---- Story card (needs the Level Intro C++ build; skipped otherwise)
+intro_class = u.load_class(None, "/Script/RGB.RGBLevelIntro")
+if intro_class:
+    intro = spawn(intro_class, "Level_Intro", (-2000, 0, 600), "02_Arrival")
+    intro.set_editor_property("title", u.Text("THE HEART"))
+    intro.set_editor_property("body", u.Text("Write the story text for this level in the Level_Intro actor (Details > RGB > Level Intro)."))
+    report["level_intro"] = True
+else:
+    report["warnings"].append("RGB Level Intro class not found; build the C++ and add the story card by hand.")
+
+# ---------------------------------------------------------------- save and record
+assert levels.save_current_level()
+report["actor_count"] = len(actors.get_all_level_actors())
+report["references_unchanged"] = all(refs[n] == sha(os.path.join(ROOT, "Content/RGB/Maps", n + ".umap")) for n in refs)
+assert report["references_unchanged"], "A reference map changed on disk"
+report["saved_map_sha256"] = sha(MAP_FILE)
+with open(REPORT, "w", encoding="utf-8") as f:
+    json.dump(report, f, indent=2)
+u.log("RGB_L4_CREATED: %s, %d actors, references unchanged" % (MAP, report["actor_count"]))

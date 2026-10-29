@@ -20,6 +20,9 @@
 #include "Kismet/GameplayStatics.h"
 #include "HAL/PlatformTime.h"
 #include "TimerManager.h"
+#include "EngineUtils.h"
+#include "../Progression/RGBLevelIntro.h"
+#include "RGBLevelIntroWidget.h"
 
 ARGBPlayerController::ARGBPlayerController(){
 	PlayerCameraManagerClass = ARGBPlayerCameraManager::StaticClass();
@@ -35,7 +38,11 @@ void ARGBPlayerController::BeginPlay()
 		SetIgnoreLookInput(true);
 		PlayerCameraManager->SetManualCameraFade(1.0f, FLinearColor::Black, false);
 
-		if (InitialBlackDelay > 0.0f)
+		if (TryBeginLevelIntro())
+		{
+			// The fade-in starts when the player continues past the story card.
+		}
+		else if (InitialBlackDelay > 0.0f)
 		{
 			GetWorldTimerManager().SetTimer(InitialBlackDelayTimerHandle, this, &ARGBPlayerController::StartInitialFadeIn, InitialBlackDelay, false);
 		}
@@ -87,6 +94,14 @@ void ARGBPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	GetWorldTimerManager().ClearTimer(InitialBlackDelayTimerHandle);
 	GetWorldTimerManager().ClearTimer(InitialFadeInTimerHandle);
+
+	if (IsValid(LevelIntroWidget)) {
+		LevelIntroWidget->OnFinished.RemoveAll(this);
+		LevelIntroWidget->RemoveFromParent();
+		LevelIntroWidget = nullptr;
+	}
+	bLevelIntroActive = false;
+	StoryCardFinishedCallback = nullptr;
 
 	if (UGameInstance* GameInstance = GetGameInstance()) {
 		if (URGBAbilityUnlockSubsytem* UnlockSubsystem = GameInstance->GetSubsystem<URGBAbilityUnlockSubsytem>()) {
@@ -229,6 +244,13 @@ void ARGBPlayerController::ShowNextAbilityInstruction()
 
 void ARGBPlayerController::DismissAbilityInstruction()
 {
+	if (bLevelIntroActive) {
+		if (IsValid(LevelIntroWidget)) {
+			LevelIntroWidget->Continue();
+		}
+		return;
+	}
+
 	if (!bAbilityInstructionVisible || FPlatformTime::Seconds() - AbilityInstructionShownTime < MinimumAbilityInstructionTime) {
 		return;
 	}
@@ -261,5 +283,75 @@ void ARGBPlayerController::SetAbilityInstructionInputEnabled(bool bEnabled)
 	}
 	else {
 		InputSubsystem->RemoveMappingContext(AbilityInstructionMappingContext);
+	}
+}
+
+bool ARGBPlayerController::TryBeginLevelIntro()
+{
+	const ARGBLevelIntro* Intro = nullptr;
+	for (TActorIterator<ARGBLevelIntro> It(GetWorld()); It; ++It) {
+		Intro = *It;
+		break;
+	}
+	if (!IsValid(Intro)) {
+		return false;
+	}
+	return ShowStoryCard(Intro->Title, Intro->Body, Intro->PromptText, Intro->FadeInDuration, Intro->PromptDelay, Intro->FadeOutDuration,
+		[this]() { FinishLevelIntro(); });
+}
+
+bool ARGBPlayerController::ShowStoryCard(const FText& Title, const FText& Body, const FText& Prompt, float FadeInDuration, float PromptDelay, float FadeOutDuration, TFunction<void()> OnFinished)
+{
+	if (bLevelIntroActive || !IsLocalController()) {
+		return false;
+	}
+	if (!AbilityInstructionMappingContext || !DismissAbilityInstructionAction) {
+		// Never pause without a way to continue.
+		UE_LOG(LogTemp, Warning, TEXT("%s skips the story card: assign Ability Instruction Mapping Context and Dismiss Ability Instruction Action."), *GetName());
+		return false;
+	}
+
+	LevelIntroWidget = CreateWidget<URGBLevelIntroWidget>(this, URGBLevelIntroWidget::StaticClass());
+	if (!IsValid(LevelIntroWidget)) {
+		return false;
+	}
+	LevelIntroWidget->SetupText(Title, Body, Prompt, FadeInDuration, PromptDelay, FadeOutDuration);
+	LevelIntroWidget->OnFinished.AddUObject(this, &ARGBPlayerController::HandleStoryCardFinished);
+	LevelIntroWidget->AddToViewport(1000);
+
+	StoryCardFinishedCallback = MoveTemp(OnFinished);
+	bLevelIntroActive = true;
+	SetAbilityInstructionInputEnabled(true);
+	UGameplayStatics::SetGamePaused(this, true);
+	return true;
+}
+
+void ARGBPlayerController::HandleStoryCardFinished()
+{
+	bLevelIntroActive = false;
+	if (IsValid(LevelIntroWidget)) {
+		LevelIntroWidget->OnFinished.RemoveAll(this);
+		LevelIntroWidget->RemoveFromParent();
+		LevelIntroWidget = nullptr;
+	}
+	SetAbilityInstructionInputEnabled(false);
+	UGameplayStatics::SetGamePaused(this, false);
+
+	TFunction<void()> Callback = MoveTemp(StoryCardFinishedCallback);
+	StoryCardFinishedCallback = nullptr;
+	if (Callback) {
+		Callback();
+	}
+}
+
+void ARGBPlayerController::FinishLevelIntro()
+{
+	// The screen is already black after the card, so only a short pause before the normal fade-in.
+	const float ShortBlackDelay = FMath::Min(InitialBlackDelay, 0.3f);
+	if (ShortBlackDelay > 0.0f) {
+		GetWorldTimerManager().SetTimer(InitialBlackDelayTimerHandle, this, &ARGBPlayerController::StartInitialFadeIn, ShortBlackDelay, false);
+	}
+	else {
+		StartInitialFadeIn();
 	}
 }

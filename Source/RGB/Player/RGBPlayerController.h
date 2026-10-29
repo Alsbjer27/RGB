@@ -14,6 +14,7 @@
 
 class UInputMappingContext;
 class UInputAction;
+class URGBLevelIntroWidget;
 
 /** Which instruction text a newly unlocked ability shows. Weapons depend on how many were unlocked before. */
 UENUM(BlueprintType)
@@ -38,6 +39,12 @@ public:
 	FRGBAbilityInstructionChangedSignature OnAbilityInstructionChanged;
 
 	bool GetActiveAbilityInstruction(ERGBAbilityInstruction& OutInstruction, ERGBPlayerAbility& OutAbility) const;
+
+	/**
+	 * Pauses the game and shows a full-screen story card (title + text). OnFinished runs after the
+	 * player continues and the card has faded out. Returns false if no card could be shown.
+	 */
+	bool ShowStoryCard(const FText& Title, const FText& Body, const FText& Prompt, float FadeInDuration, float PromptDelay, float FadeOutDuration, TFunction<void()> OnFinished);
 
 protected:
 	virtual void BeginPlay() override;
@@ -88,6 +95,13 @@ private:
 	void HandleAbilityUnlocked(ERGBPlayerAbility Ability);
 
 	void ShowNextAbilityInstruction();
+
+	/** Shows the level's RGB Level Intro card (if any) before the fade-in; returns false when there is none. */
+	bool TryBeginLevelIntro();
+	void FinishLevelIntro();
+	void HandleStoryCardFinished();
+
+	TFunction<void()> StoryCardFinishedCallback;
 	void DismissAbilityInstruction();
 	void SetAbilityInstructionInputEnabled(bool bEnabled);
 
@@ -95,4 +109,9 @@ private:
 	bool bAbilityInstructionVisible = false;
 	bool bInitialFadeInFinished = false;
 	double AbilityInstructionShownTime = 0.0;
+
+	UPROPERTY(Transient)
+	TObjectPtr<URGBLevelIntroWidget> LevelIntroWidget;
+
+	bool bLevelIntroActive = false;
 };

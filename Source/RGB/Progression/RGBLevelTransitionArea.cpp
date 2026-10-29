@@ -8,6 +8,7 @@
 #include "TimerManager.h"
 
 #include "../Player/RGBPlayerCharacter.h"
+#include "../Player/RGBPlayerController.h"
 
 ARGBLevelTransitionArea::ARGBLevelTransitionArea()
 {
@@ -45,6 +46,7 @@ void ARGBLevelTransitionArea::HandleTransitionOverlap(UPrimitiveComponent* Overl
 	}
 
 	bTransitionStarted = true;
+	TransitioningController = PlayerController;
 	TransitionTrigger->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	PlayerController->SetIgnoreMoveInput(true);
 	PlayerController->SetIgnoreLookInput(true);
@@ -65,12 +67,30 @@ void ARGBLevelTransitionArea::HandleTransitionOverlap(UPrimitiveComponent* Overl
 
 	if (TransitionDelay > 0.0f)
 	{
-		GetWorldTimerManager().SetTimer(TransitionTimerHandle, this, &ARGBLevelTransitionArea::OpenDestinationLevel, TransitionDelay, false);
+		GetWorldTimerManager().SetTimer(TransitionTimerHandle, this, &ARGBLevelTransitionArea::ShowCardOrOpenDestination, TransitionDelay, false);
 	}
 	else
 	{
-		OpenDestinationLevel();
+		ShowCardOrOpenDestination();
 	}
+}
+
+void ARGBLevelTransitionArea::ShowCardOrOpenDestination()
+{
+	ARGBPlayerController* RGBController = Cast<ARGBPlayerController>(TransitioningController.Get());
+	if ((!CardTitle.IsEmpty() || !CardText.IsEmpty()) && IsValid(RGBController)) {
+		TWeakObjectPtr<ARGBLevelTransitionArea> WeakThis(this);
+		const bool bShown = RGBController->ShowStoryCard(CardTitle, CardText, CardPromptText, CardFadeInDuration, CardPromptDelay, CardFadeOutDuration,
+			[WeakThis]() {
+				if (WeakThis.IsValid()) {
+					WeakThis->OpenDestinationLevel();
+				}
+			});
+		if (bShown) {
+			return;
+		}
+	}
+	OpenDestinationLevel();
 }
 
 void ARGBLevelTransitionArea::OpenDestinationLevel()
